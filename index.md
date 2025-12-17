@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Portfolio | Can Kurt
+title: Portefølje | Can Kurt
 ---
 
 <div style="text-align: center;">
