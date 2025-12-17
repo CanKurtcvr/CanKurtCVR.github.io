@@ -13,7 +13,16 @@ title: Portfolio | Can Kurt
     <p>
         København, Danmark • <a href="mailto:cankurtcvr@gmail.com">cankurtcvr@gmail.com</a> • <a href="https://linkedin.com/in/canxkurt">LinkedIn</a>
     </p>
-</div>
+
+    <nav style="font-size: 0.8rem; margin-top: 20px; color: #666;">
+        <a href="#faglig-profil" style="text-decoration: none; color: inherit;">Profil</a> &nbsp;|&nbsp; 
+        <a href="#kompetencer--personlig-udvikling" style="text-decoration: none; color: inherit;">Kompetencer</a> &nbsp;|&nbsp; 
+        <a href="#udvalgte-projekter" style="text-decoration: none; color: inherit;">Projekter</a> &nbsp;|&nbsp; 
+        <a href="#erhvervserfaring" style="text-decoration: none; color: inherit;">Erfaring</a> &nbsp;|&nbsp; 
+        <a href="#uddannelse" style="text-decoration: none; color: inherit;">Uddannelse</a> &nbsp;|&nbsp; 
+        <a href="#kontakt" style="text-decoration: none; color: inherit;">Kontakt</a>
+    </nav>
+    </div>
 
 ---
 
@@ -29,7 +38,7 @@ Jeg har en holistisk forståelse for IT-udvikling; fra den tekniske arkitektur i
 
 Ved siden af mine studier og erhvervsarbejde lægger jeg stor vægt på kontinuerlig læring og disciplin. Jeg arbejder struktureret med min personlige udvikling gennem litteratur om strategi og adfærdspsykologi, herunder værker om ledelse og stoisk filosofi. Dette giver mig et stærkt fundament for strategisk tænkning og ro i pressede situationer.
 
-Jeg engagerer mig desuden som **lektiehjælper** for folkeskoleelever. Dette arbejde skærper mine pædagogiske evner og kommunikation, da evnen til at formidle komplekst stof på en letforståelig måde er essentiel – både i undervisning og i IT-konsulentrollen.
+Jeg engagerer mig desuden som **frivillig lektiehjælper** under **Red Barnet Ungdom**. Dette arbejde skærper mine pædagogiske evner og kommunikation, da evnen til at formidle komplekst stof på en letforståelig måde er essentiel – både i undervisning og i IT-konsulentrollen.
 
 ---
 
@@ -84,7 +93,7 @@ Jeg engagerer mig desuden som **lektiehjælper** for folkeskoleelever. Dette arb
 
 ---
 
-<div style="text-align: center; margin-top: 50px; margin-bottom: 50px;">
+<div id="kontakt" style="text-align: center; margin-top: 50px; margin-bottom: 50px;">
     <h3>Kontakt</h3>
     <p>
         Jeg stiller gerne op til en uforpligtende samtale om, hvordan mine kompetencer kan skabe værdi for jeres virksomhed.
