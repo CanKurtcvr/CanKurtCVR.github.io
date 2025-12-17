@@ -70,8 +70,11 @@ Ellers er jeg drevet af en umættelig nysgerrighed og ligger inde med en stor m�
 * **Drift:** Vedligeholdelse og optimering af web-løsninger.
 
 **IT-konsulent (Full-time / Try & Hire)** *Danske Bank (via EY / M Networks) | 06/2022 – 12/2023*
-* **Dataanalyse:** Behandlede og optimerede +400 kundecases i Inkassoafdelingen via Excel og interne systemer.
-* **Vidensdeling:** Fungerede som floorwalker og stod for oplæring af nye medarbejdere i teamet.
+* **Sagsbehandling:** Ansat i et *Try & Hire*-forløb med ansvar for håndtering af fejlagtige kundesager i Inkassoafdelingen.
+* **Dataanalyse:** Arbejdede med analyse og behandling af store datamængder ved hjælp af avancerede Excel-skabeloner.
+* **Compliance:** Håndterede juridisk dokumentation og sikrede korrekt kompensation til berørte kunder.
+* **Vidensdeling:** Havde ansvar for undervisning og onboarding af nye kollegaer på projektet.
+* **Erfaring:** Opnåede solid erfaring med arbejde på professionelt niveau i en stor, reguleret organisation.
 
 **Pædagogmedhjælper** *Ole Rømer Skole | 02/2020 – 05/2022*
 * **Ansvar:** Havde ansvar for en elev med særlige behov, herunder faglig støtte og konflikthåndtering for at sikre et trygt læringsmiljø.
