@@ -161,21 +161,23 @@
         <h2>Pause & Spil</h2>
         <p style="color: #666; margin-bottom: 20px;">Har du brug for en pause? Tag et spil her.</p>
 
-        <div class="game-menu">
-            <button class="game-btn" onclick="showGame('snake')">Snake 2.0</button>
-            <button class="game-btn" onclick="showGame('blackjack')">Blackjack</button>
-        </div>
+      <div class="game-menu">
+    <button class="game-btn" onclick="showGame('snake')">Snake 2.0</button>
+    <button class="game-btn" onclick="showGame('blackjack')">Blackjack</button>
+    <button class="game-btn" onclick="showGame('tetris')">Tetris</button>
+</div>
 
-        <div id="game-snake" class="game-area">
-            <h3>Snake 2.0</h3>
-            <div class="score-board">
-                <span id="scoreText">Score: 0</span>
-                <span id="highScoreText">Highscore: 0</span>
-            </div>
-            <p style="font-size: 0.9em; color:#777;">Brug piletasterne. Undgå vægge og din egen hale!</p>
-            <canvas id="snakeCanvas" width="400" height="400"></canvas>
-            <button class="game-btn" onclick="initSnake()" style="margin-top:15px; background-color: #27ae60;">Start Nyt Spil</button>
-        </div>
+<div id="game-tetris" class="game-area" style="display:none;">
+    <h3>Tetris</h3>
+    <p style="font-size: 0.9em; margin-bottom: 15px;">
+        Klassisk Tetris integreret fra Open Source. <br>
+        <span style="font-size: 0.8em; color: #777;">(Kredit: Jake Gordon)</span>
+    </p>
+    
+    <iframe src="spil/tetris/index.html" width="100%" height="600px" style="border:none; overflow:hidden;"></iframe>
+    
+    <button class="game-btn" onclick="showGame('menu')" style="margin-top:10px; background-color: #7f8c8d;">Luk Spil</button>
+</div>
 
         <div id="game-blackjack" class="game-area">
             <h3>Blackjack</h3>
