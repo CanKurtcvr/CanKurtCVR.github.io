@@ -29,21 +29,28 @@ function toggleDone(boxId) {
 
 // --- SPIL MENU STYRING ---
 function showGame(gameName) {
-    // Skjul alle spil-områder
+    // 1. Skjul ALLE spil først
     document.getElementById('game-snake').style.display = 'none';
     document.getElementById('game-blackjack').style.display = 'none';
     
-    // Stop snake hvis den kører
+    // Vi tjekker lige om tetris-elementet findes før vi prøver at skjule det (for en sikkerheds skyld)
+    var tetrisGame = document.getElementById('game-tetris');
+    if(tetrisGame) tetrisGame.style.display = 'none';
+    
+    // Stop snake loop hvis den kørte
     clearInterval(gameInterval);
 
-    // Vis valgte spil
+    // 2. Vis det valgte spil
     if(gameName === 'snake') {
         document.getElementById('game-snake').style.display = 'block';
         initSnake(); 
     } else if (gameName === 'blackjack') {
         document.getElementById('game-blackjack').style.display = 'block';
-        // Reset blackjack UI uden at starte automatisk hvis man ikke vil
         document.getElementById('bj-message').innerText = "Tryk 'Start Spil' for at give kort";
+    } else if (gameName === 'tetris') {
+        // Vis tetris
+        if(tetrisGame) tetrisGame.style.display = 'block';
+        // (Tetris starter sig selv inde i iframen, så vi behøver ikke kalde en funktion)
     }
 }
 
