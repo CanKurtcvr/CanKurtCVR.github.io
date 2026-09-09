@@ -409,6 +409,14 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   // UI States
   const [speedKnots, setSpeedKnots] = useState(0);
   const [altitudeMeters, setAltitudeMeters] = useState(36);
@@ -2888,7 +2896,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           </div>
 
           {/* Starlight Essence Collected */}
-          <div className="pointer-events-auto px-3 py-2 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold shadow-lg">
+          <div className="hidden">
             <Sparkles className="w-3.5 h-3.5" />
             <span>{collectedEssence} Essences</span>
           </div>
@@ -2897,7 +2905,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
         {/* Right: Quick Controls & Camera Modes */}
         <div className="flex items-center gap-2 pointer-events-auto">
           {/* Time of Day Switcher */}
-          <div className="hidden sm:flex items-center bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] rounded-xl p-1 text-[11px]">
+          <div className="hidden">
             {(['dawn', 'midday', 'golden_hour', 'twilight', 'starlight'] as TimeOfDay[]).map((tod) => (
               <button
                 key={tod}
@@ -2916,7 +2924,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           {/* Celestial Bloom Toggle */}
           <button
             onClick={() => setBloomEnabled(!bloomEnabled)}
-            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
+            className={`hidden p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
               bloomEnabled
                 ? 'bg-[#231b2e]/90 border-amber-400/60 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
                 : 'bg-[#11161d]/85 border-[#27323f] text-[#94a3b8] hover:text-[#f5efe3]'
@@ -2930,7 +2938,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           {/* Depth of Field (DOF Bokeh) Toggle */}
           <button
             onClick={() => setIsDofEnabled(!isDofEnabled)}
-            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
+            className={`hidden p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
               isDofEnabled
                 ? 'bg-[#1b2738]/90 border-sky-500/50 text-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.25)]'
                 : 'bg-[#11161d]/85 border-[#27323f] text-[#94a3b8] hover:text-[#f5efe3]'
@@ -2944,7 +2952,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           {/* Flight Pitch Direction Toggle */}
           <button
             onClick={() => setInvertPitch(!invertPitch)}
-            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#c5a059] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
+            className="hidden p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#c5a059] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
             title={`Flight Pitch: ${invertPitch ? 'Inverted (W: Climb, S: Dive)' : 'Standard (W: Dive, S: Climb)'}. Click to switch.`}
           >
             <Wind className="w-4 h-4 text-amber-300" />
@@ -2960,7 +2968,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
                 prev === 'chase' ? 'cinematic' : prev === 'cinematic' ? 'firstPerson' : 'chase'
               )
             }
-            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#38bdf8] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
+            className="hidden p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#38bdf8] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
             title="Switch 3rd Person View (Press C)"
           >
             <Eye className="w-4 h-4 text-[#38bdf8]" />
@@ -3011,7 +3019,13 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
           {/* Fullscreen Toggle */}
           <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
+            onClick={async () => {
+              if (document.fullscreenElement) {
+                await document.exitFullscreen();
+              } else {
+                await containerRef.current?.requestFullscreen();
+              }
+            }}
             className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] transition-all cursor-pointer shadow-lg"
             title="Toggle Fullscreen"
           >
@@ -3039,7 +3053,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
             </div>
 
             <p className="text-[#94a3b8] mb-2 text-[11px] leading-relaxed">
-              Welcome, Wayfarer. You begin in your spiritual humanoid form. Walk the straight path to explore:
+              This is not a race. Choose one small action: walk to a sanctuary, listen to its guide, and carry one idea back into your day.
             </p>
 
             <div className="grid grid-cols-3 gap-2">
@@ -3053,7 +3067,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
                 }`}
               >
                 <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>1. Walk Ahead</span>
+                  <span>1. Arrive</span>
                 </div>
                 <div className="text-[10px] text-[#94a3b8]">
                   Press <strong className="text-white">W</strong> or <strong className="text-white">↑</strong> along pavers
@@ -3070,7 +3084,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
                 }`}
               >
                 <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>2. Sage Elyon</span>
+                  <span>2. Listen</span>
                 </div>
                 <div className="text-[10px] text-[#94a3b8]">
                   Meet at Sundial & press <strong className="text-white">E</strong>
@@ -3085,7 +3099,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
                 }`}
               >
                 <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>3. Take Flight</span>
+                  <span>3. Reflect</span>
                 </div>
                 <div className="text-[10px] text-[#94a3b8]">
                   Walk off edge or press <strong className="text-white">Space</strong>

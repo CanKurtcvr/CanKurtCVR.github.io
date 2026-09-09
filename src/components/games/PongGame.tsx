@@ -86,11 +86,8 @@ export default function PongGame() {
 
       p.draw = () => {
         p.push();
+        // Keep the court stable so movement feedback never shifts the controls.
         if (screenShakeTimer > 0) {
-          p.translate(
-            p.random(-screenShakeTimer, screenShakeTimer),
-            p.random(-screenShakeTimer, screenShakeTimer)
-          );
           screenShakeTimer *= 0.85;
           if (screenShakeTimer < 0.5) screenShakeTimer = 0;
         }
@@ -248,9 +245,12 @@ export default function PongGame() {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full aspect-video max-h-[70vh] min-h-[320px] overflow-hidden rounded-lg"
-    />
+    <div className="w-full overflow-hidden rounded-lg">
+      <div ref={containerRef} className="aspect-video max-h-[70vh] min-h-[320px]" />
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-300">
+        <span><strong className="text-cyan-400">W / S</strong> or <strong className="text-cyan-400">↑ / ↓</strong> Move paddle</span>
+        <span><strong className="text-rose-400">Score</strong> first to 10 wins</span>
+      </div>
+    </div>
   );
 }
