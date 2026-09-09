@@ -1,0 +1,3544 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import {
+  Compass,
+  Wind,
+  Volume2,
+  VolumeX,
+  Eye,
+  Sparkles,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  Shield,
+  HelpCircle,
+  X,
+  Crosshair,
+  Layers,
+  MapPin,
+  Focus,
+  Feather,
+  MessageSquare,
+  MessageCircle,
+  BookOpen,
+  Flame,
+  RotateCcw,
+} from 'lucide-react';
+import { HabitIsland, CharacterState, QuestStatus, TimeOfDay, WorldArea, GearSlot } from './types';
+import { HABIT_ISLANDS } from './data/worldData';
+import { soundSynth } from './audio/soundSynthesizer';
+import { CharacterGearPanel } from './CharacterGearPanel';
+
+interface FlightWorld3DProps {
+  character: CharacterState;
+  quests: QuestStatus[];
+  timeOfDay: TimeOfDay;
+  onTimeOfDayChange: (time: TimeOfDay) => void;
+  onEnterArea: (area: WorldArea, island: HabitIsland) => void;
+  onAwardXP?: (amount: number) => void;
+  onOpenGuideTab?: () => void;
+  onOpenArmoryModal?: () => void;
+  onAscendGear?: (slot: GearSlot) => void;
+}
+
+// 3D coordinate mapping for islands
+interface Island3DConfig {
+  island: HabitIsland;
+  pos: THREE.Vector3;
+  radius: number;
+  color: number;
+  accentColor: number;
+  beaconColor: number;
+  height: number;
+}
+
+// Talkable NPC on the Islands
+export interface IslandNPC {
+  id: string;
+  name: string;
+  title: string;
+  islandId: string;
+  islandName: string;
+  role: string;
+  themeColor: string;
+  accentHex: string;
+  avatarIcon: 'Compass' | 'Sparkles' | 'Flame' | 'Shield' | 'BookOpen' | 'Feather';
+  avatarEmoji: string;
+  dialogueLines: string[];
+  localPos: { x: number; y: number; z: number };
+}
+
+export const ISLAND_NPCS: IslandNPC[] = [
+  {
+    id: 'npc-elyon',
+    name: 'Sage Elyon',
+    title: 'Grand Arbiter of the Crossroads',
+    islandId: 'nexus',
+    islandName: "The Wayfarer's Nexus",
+    role: 'Keeper of Equilibrium & Universal Mastery',
+    themeColor: 'amber',
+    accentHex: '#f59e0b',
+    avatarIcon: 'Compass',
+    avatarEmoji: '✨',
+    dialogueLines: [
+      'Greetings, noble Wayfarer! You stand at the Crossroads of Ascension, where all five virtues converge.',
+      'Across these boundless skies float five sacred sanctuaries, each protecting an essential pillar of human mastery.',
+      'A scattered mind attempts all things at once and finishes none. True ascension is forged through the quiet, deliberate rhythm of each day.',
+      'Spread your wings (Space) and seek the guardians of each shrine. Let consistency be your anchor among the clouds!',
+    ],
+    localPos: { x: 5.5, y: 6.0, z: 0 },
+  },
+  {
+    id: 'npc-zahra',
+    name: 'Sister Zahra',
+    title: 'Guardian of Stillness & Morning Light',
+    islandId: 'spirituality',
+    islandName: 'Sanctuary of the Soul',
+    role: 'Mentor of Sincere Prayer & Mindfulness',
+    themeColor: 'cyan',
+    accentHex: '#38bdf8',
+    avatarIcon: 'Sparkles',
+    avatarEmoji: '🕊️',
+    dialogueLines: [
+      'Peace be upon your heart, seeker. You have arrived at the Sanctuary of the Soul.',
+      'Before the world awakes with clamor and endless demands, the morning belongs purely to your spirit.',
+      'Even ten quiet breaths in the pre-dawn silence can calm a storm that would otherwise drown your entire day.',
+      'Anchor your soul here each morning. Stillness is not inaction—it is supreme clarity.',
+    ],
+    localPos: { x: 18, y: 6.0, z: 14 },
+  },
+  {
+    id: 'npc-tariq',
+    name: 'Hermit Tariq',
+    title: 'Warden of the Hearth of Release',
+    islandId: 'reflection',
+    islandName: 'Chamber of Reflection',
+    role: 'Guide to Honest Self-Audit & Guilt-Free Renewal',
+    themeColor: 'rose',
+    accentHex: '#f43f5e',
+    avatarIcon: 'Flame',
+    avatarEmoji: '🔥',
+    dialogueLines: [
+      'Welcome to the Hearth, weary traveler. Sit beside the fire and rest your wings.',
+      'Did you stumble today? Did you break a habit streak or let procrastination steal your daylight?',
+      'Cast the guilt into these glowing embers. Shame is heavy lead that will only drag down your flight.',
+      'An honest evening audit is not about self-punishment—it is about gentle correction. Tomorrow’s dawn arrives clean.',
+    ],
+    localPos: { x: -16, y: 6.0, z: 15 },
+  },
+  {
+    id: 'npc-rayan',
+    name: 'Captain Rayan',
+    title: 'Paragon of Physical Discipline',
+    islandId: 'vitality',
+    islandName: 'Citadel of Vitality',
+    role: 'Champion of Physical Health & Unbreakable Vigor',
+    themeColor: 'emerald',
+    accentHex: '#10b981',
+    avatarIcon: 'Shield',
+    avatarEmoji: '⚡',
+    dialogueLines: [
+      'Stand tall, Wayfarer! Look at these high cliffs—conquered only through strength and relentless endurance!',
+      'The physical vessel is the sacred engine of all spiritual and creative energy. If the temple crumbles, the mind falters.',
+      'Never wait for motivation. Motivation is a fickle breeze. Discipline is iron forged on the days you least feel like moving.',
+      'Move your body with vigor today! Conquer inertia and command your vitality!',
+    ],
+    localPos: { x: 18, y: 6.0, z: -14 },
+  },
+  {
+    id: 'npc-idris',
+    name: 'Archivist Idris',
+    title: 'Master of the Deep Scriptorium',
+    islandId: 'wisdom',
+    islandName: 'Archive of Wisdom',
+    role: 'Philosopher of 30-Minute Undisturbed Focus',
+    themeColor: 'blue',
+    accentHex: '#60a5fa',
+    avatarIcon: 'BookOpen',
+    avatarEmoji: '📜',
+    dialogueLines: [
+      'Step softly, seeker of timeless truths... within these carved stone arches rest the thoughts of ancient sages.',
+      'In your world, endless fleeting feeds fight relentlessly to fracture your attention into a thousand brittle pieces.',
+      'To sit with an analog book for thirty uninterrupted minutes is an act of supreme courage.',
+      'Feed your mind from deep, quiet wells of timeless wisdom every day. The quality of your thoughts shapes your destiny.',
+    ],
+    localPos: { x: -18, y: 6.0, z: 14 },
+  },
+  {
+    id: 'npc-layla',
+    name: 'Artisan Layla',
+    title: 'Architect of Faceless Storytelling',
+    islandId: 'creation',
+    islandName: 'Atelier of Creation',
+    role: 'Creative Director of Egoless Storytelling',
+    themeColor: 'purple',
+    accentHex: '#c084fc',
+    avatarIcon: 'Feather',
+    avatarEmoji: '✒️',
+    dialogueLines: [
+      'Welcome to the Atelier of Creation! Here, we craft with devotion and humility, far from the noise of the ego.',
+      'When you hide your face in your art, you make the work about the idea, the truth, and the beauty—not yourself.',
+      'Do not chase shallow vanity or algorithmic applause. Work quietly and tactilely in your studio.',
+      'Let your craftsmanship speak in a voice so pure and deliberate that it outlasts all fleeting trends.',
+    ],
+    localPos: { x: 16, y: 6.0, z: -16 },
+  },
+];
+
+// Helper: Canvas Texture Billboard Sprite for NPC Nametags
+function createNPCLabelSprite(name: string, title: string, colorHex: string): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    // Draw stylish glassmorphic pill background
+    ctx.fillStyle = 'rgba(10, 15, 22, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(16, 20, 480, 120, 24) : ctx.rect(16, 20, 480, 120);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = colorHex;
+    ctx.stroke();
+
+    // Name text
+    ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(name, 256, 70);
+
+    // Title / "[E / T] Talk" text
+    ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = colorHex;
+    ctx.fillText(`💬 [E / T] Talk • ${title}`, 256, 110);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const spriteMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(7.5, 2.3, 1.0);
+  sprite.position.set(0, 4.8, 0);
+  return sprite;
+}
+
+// Helper: Create 3D Stylized Character Model for Island NPCs
+function createNPCEntity(npc: IslandNPC): {
+  group: THREE.Group;
+  beaconRune: THREE.Mesh;
+  relicMesh: THREE.Mesh;
+  halo: THREE.Mesh;
+} {
+  const npcGroup = new THREE.Group();
+  npcGroup.name = `npc-${npc.id}`;
+
+  const themeHex = parseInt(npc.accentHex.replace('#', '0x'), 16);
+
+  // 1. Sacred Stone Pedestal
+  const basePedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.4, 2.7, 0.3, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0x1f2937,
+      roughness: 0.85,
+      metalness: 0.1,
+      flatShading: true,
+    })
+  );
+  basePedestal.position.y = 0.15;
+  basePedestal.receiveShadow = true;
+  npcGroup.add(basePedestal);
+
+  // Glowing inner circular rune
+  const runeCircle = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.1, 2.1, 0.05, 24),
+    new THREE.MeshStandardMaterial({
+      color: themeHex,
+      emissive: themeHex,
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.75,
+    })
+  );
+  runeCircle.position.y = 0.32;
+  npcGroup.add(runeCircle);
+
+  // 2. Robed Character Figure
+  const robeMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.7,
+    metalness: 0.1,
+  });
+
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: themeHex,
+    roughness: 0.4,
+    metalness: 0.25,
+    emissive: themeHex,
+    emissiveIntensity: 0.2,
+  });
+
+  // Lower Robe / Cassock
+  const robeMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.95, 1.8, 16),
+    robeMat
+  );
+  robeMesh.position.y = 1.2;
+  robeMesh.castShadow = true;
+  npcGroup.add(robeMesh);
+
+  // Decorative sash / Stole
+  const sashMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.35, 1.4, 0.15),
+    accentMat
+  );
+  sashMesh.position.set(0, 1.35, 0.48);
+  npcGroup.add(sashMesh);
+
+  // Shoulder Mantle
+  const mantleMesh = new THREE.Mesh(
+    new THREE.ConeGeometry(0.92, 1.0, 16),
+    accentMat
+  );
+  mantleMesh.position.y = 2.1;
+  mantleMesh.castShadow = true;
+  npcGroup.add(mantleMesh);
+
+  // Hooded Head
+  const hoodMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.44, 16, 16),
+    robeMat
+  );
+  hoodMesh.position.y = 2.45;
+  hoodMesh.castShadow = true;
+  npcGroup.add(hoodMesh);
+
+  // Inner Serene Face Glow
+  const innerFace = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 12, 12),
+    new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+    })
+  );
+  innerFace.position.set(0, 2.42, 0.2);
+  npcGroup.add(innerFace);
+
+  // 3. Unique Floating Sacred Relic
+  let relicMesh: THREE.Mesh;
+  if (npc.id === 'npc-zahra') {
+    // Lotus Rosary
+    relicMesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.42, 0.08, 12, 24),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.7 })
+    );
+  } else if (npc.id === 'npc-tariq') {
+    // Hearth Ember
+    relicMesh = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.38, 1),
+      new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xf43f5e, emissiveIntensity: 0.9 })
+    );
+  } else if (npc.id === 'npc-rayan') {
+    // Vitality Crest
+    relicMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.45, 0.65, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.6 })
+    );
+  } else if (npc.id === 'npc-idris') {
+    // Scriptorium Book
+    relicMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.55, 0.12, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x60a5fa, emissive: 0x60a5fa, emissiveIntensity: 0.6 })
+    );
+  } else if (npc.id === 'npc-layla') {
+    // Prism of Creativity
+    relicMesh = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.42, 0),
+      new THREE.MeshStandardMaterial({ color: 0xc084fc, emissive: 0xc084fc, emissiveIntensity: 0.8 })
+    );
+  } else {
+    // Astrolabe for Sage Elyon
+    relicMesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.45, 0.06, 8, 24),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.8 })
+    );
+  }
+  relicMesh.position.set(1.2, 1.7, 0.3);
+  npcGroup.add(relicMesh);
+
+  // 4. Overhead Halo
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5, 0.035, 8, 24),
+    new THREE.MeshBasicMaterial({ color: themeHex, transparent: true, opacity: 0.85 })
+  );
+  halo.rotation.x = Math.PI / 2;
+  halo.position.set(0, 3.1, 0);
+  npcGroup.add(halo);
+
+  // 5. Overhead Rotating Dialogue Beacon Rune
+  const beaconRune = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.45, 0),
+    new THREE.MeshBasicMaterial({ color: themeHex })
+  );
+  beaconRune.position.set(0, 3.8, 0);
+  npcGroup.add(beaconRune);
+
+  // Overhead Canvas Billboard Sprite
+  const nametagSprite = createNPCLabelSprite(npc.name, npc.title, npc.accentHex);
+  npcGroup.add(nametagSprite);
+
+  return { group: npcGroup, beaconRune, relicMesh, halo };
+}
+
+export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
+  character,
+  quests,
+  timeOfDay,
+  onTimeOfDayChange,
+  onEnterArea,
+  onAwardXP,
+  onOpenGuideTab,
+  onOpenArmoryModal,
+  onAscendGear,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // UI States
+  const [speedKnots, setSpeedKnots] = useState(0);
+  const [altitudeMeters, setAltitudeMeters] = useState(36);
+  const [currentIsland, setCurrentIsland] = useState<HabitIsland | null>(null);
+  const [nearSanctuary, setNearSanctuary] = useState<WorldArea | null>(null);
+  const [nearSanctuaryIsland, setNearSanctuaryIsland] = useState<HabitIsland | null>(null);
+  const [collectedEssence, setCollectedEssence] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [cameraMode, setCameraMode] = useState<'chase' | 'cinematic' | 'firstPerson'>('chase');
+  const [flightState, setFlightState] = useState<'SOARING' | 'GLIDING' | 'DIVING' | 'BOOSTING' | 'PERCHED'>('PERCHED');
+  const [isDofEnabled, setIsDofEnabled] = useState(true);
+  const [bloomEnabled, setBloomEnabled] = useState(true);
+  const [invertPitch, setInvertPitch] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [headingDegrees, setHeadingDegrees] = useState(0);
+
+  // Character & Gear Panel States (Land Transformation Feature)
+  const [isGearPanelOpen, setIsGearPanelOpen] = useState(false);
+  const [isGroundedUI, setIsGroundedUI] = useState(true);
+  const [showIntroGuide, setShowIntroGuide] = useState(true);
+  const [introStep, setIntroStep] = useState<1 | 2 | 3>(1);
+  const [transformToast, setTransformToast] = useState<string | null>(null);
+  const transformToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerTransformToast = useCallback((msg: string) => {
+    setTransformToast(msg);
+    if (transformToastTimeoutRef.current) clearTimeout(transformToastTimeoutRef.current);
+    transformToastTimeoutRef.current = setTimeout(() => {
+      setTransformToast(null);
+    }, 4500);
+  }, []);
+
+  const triggerTransformToastRef = useRef(triggerTransformToast);
+  triggerTransformToastRef.current = triggerTransformToast;
+
+  // Pokemon-style NPC Interaction and Dialogue States
+  const [nearNPC, setNearNPC] = useState<IslandNPC | null>(null);
+  const [dialogueNPC, setDialogueNPC] = useState<IslandNPC | null>(null);
+  const [isDialogueOpen, setIsDialogueOpen] = useState(false);
+  const [dialogueLineIndex, setDialogueLineIndex] = useState(0);
+  const [displayedText, setDisplayedText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Interaction Refs for loop access
+  const nearSanctuaryRef = useRef<WorldArea | null>(null);
+  const nearSanctuaryIslandRef = useRef<HabitIsland | null>(null);
+  nearSanctuaryRef.current = nearSanctuary;
+  nearSanctuaryIslandRef.current = nearSanctuaryIsland;
+
+  const nearNPCRef = useRef<IslandNPC | null>(null);
+  nearNPCRef.current = nearNPC;
+
+  const isDialogueOpenRef = useRef(false);
+  isDialogueOpenRef.current = isDialogueOpen;
+
+  const dialogueNPCRef = useRef<IslandNPC | null>(null);
+  dialogueNPCRef.current = dialogueNPC;
+
+  const dialogueLineIndexRef = useRef(0);
+  dialogueLineIndexRef.current = dialogueLineIndex;
+
+  const isTypingRef = useRef(false);
+  isTypingRef.current = isTyping;
+
+  const typewriterTimerRef = useRef<any>(null);
+
+  const isDofEnabledRef = useRef(isDofEnabled);
+  isDofEnabledRef.current = isDofEnabled;
+
+  const invertPitchRef = useRef(invertPitch);
+  invertPitchRef.current = invertPitch;
+
+  const bloomEnabledRef = useRef(bloomEnabled);
+  bloomEnabledRef.current = bloomEnabled;
+
+  const bloomPassRef = useRef<UnrealBloomPass | null>(null);
+
+  const wasGroundedRef = useRef(true);
+
+  // Typewriter effect to display a line character by character like a classic Pokemon NPC
+  const startTypewriter = useCallback((line: string) => {
+    if (typewriterTimerRef.current) {
+      clearInterval(typewriterTimerRef.current);
+      typewriterTimerRef.current = null;
+    }
+    setDisplayedText('');
+    setIsTyping(true);
+    isTypingRef.current = true;
+
+    let charIdx = 0;
+    typewriterTimerRef.current = setInterval(() => {
+      charIdx++;
+      if (charIdx <= line.length) {
+        setDisplayedText(line.slice(0, charIdx));
+        if (charIdx % 3 === 0) {
+          soundSynth.playDialogueLetter();
+        }
+      } else {
+        if (typewriterTimerRef.current) {
+          clearInterval(typewriterTimerRef.current);
+          typewriterTimerRef.current = null;
+        }
+        setIsTyping(false);
+        isTypingRef.current = false;
+      }
+    }, 22);
+  }, []);
+
+  // Open Pokemon-style Dialogue with specific NPC
+  const handleOpenNPCDialogue = useCallback(
+    (npc: IslandNPC) => {
+      setDialogueNPC(npc);
+      dialogueNPCRef.current = npc;
+      setDialogueLineIndex(0);
+      dialogueLineIndexRef.current = 0;
+      setIsDialogueOpen(true);
+      isDialogueOpenRef.current = true;
+      soundSynth.playDialogueAdvance();
+
+      if (npc.dialogueLines.length > 0) {
+        startTypewriter(npc.dialogueLines[0]);
+      }
+    },
+    [startTypewriter]
+  );
+
+  // Close Dialogue Box
+  const handleCloseDialogue = useCallback(() => {
+    if (typewriterTimerRef.current) {
+      clearInterval(typewriterTimerRef.current);
+      typewriterTimerRef.current = null;
+    }
+    setIsDialogueOpen(false);
+    isDialogueOpenRef.current = false;
+    setIsTyping(false);
+    isTypingRef.current = false;
+    setDialogueNPC(null);
+    dialogueNPCRef.current = null;
+  }, []);
+
+  const handleCloseDialogueRef = useRef(handleCloseDialogue);
+  handleCloseDialogueRef.current = handleCloseDialogue;
+
+  // Advance dialogue to next line on click/Space/Enter (or finish if on last line)
+  const handleAdvanceDialogue = useCallback(() => {
+    const npc = dialogueNPCRef.current;
+    if (!npc) return;
+
+    // If currently typing, immediately display full line so player can read without waiting!
+    if (isTypingRef.current) {
+      if (typewriterTimerRef.current) {
+        clearInterval(typewriterTimerRef.current);
+        typewriterTimerRef.current = null;
+      }
+      setIsTyping(false);
+      isTypingRef.current = false;
+      const fullLine = npc.dialogueLines[dialogueLineIndexRef.current];
+      setDisplayedText(fullLine);
+      return;
+    }
+
+    // If current line finished typing, proceed to next line or close
+    const nextIdx = dialogueLineIndexRef.current + 1;
+    if (nextIdx < npc.dialogueLines.length) {
+      setDialogueLineIndex(nextIdx);
+      dialogueLineIndexRef.current = nextIdx;
+      soundSynth.playDialogueAdvance();
+      startTypewriter(npc.dialogueLines[nextIdx]);
+    } else {
+      // Completed all lines
+      handleCloseDialogue();
+      soundSynth.playItemObtain();
+    }
+  }, [startTypewriter, handleCloseDialogue]);
+
+  const handleAdvanceDialogueRef = useRef(handleAdvanceDialogue);
+  handleAdvanceDialogueRef.current = handleAdvanceDialogue;
+
+  // Replay dialogue from beginning
+  const handleRestartDialogue = useCallback(() => {
+    const npc = dialogueNPCRef.current;
+    if (!npc) return;
+    setDialogueLineIndex(0);
+    dialogueLineIndexRef.current = 0;
+    soundSynth.playDialogueAdvance();
+    startTypewriter(npc.dialogueLines[0]);
+  }, [startTypewriter]);
+
+  // Flight physics state
+  const physicsRef = useRef({
+    pos: new THREE.Vector3(0, 36, -38),
+    vel: new THREE.Vector3(0, 0, 0),
+    speed: 0,
+    maxSpeed: 48,
+    minSpeed: 4,
+    boostMultiplier: 1.0,
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    isGrounded: true,
+    flappingWingPhase: 0,
+    wingFlapSpeed: 6.0,
+    isGliding: false,
+    keys: {
+      KeyW: false,
+      KeyS: false,
+      KeyA: false,
+      KeyD: false,
+      Space: false,
+      ShiftLeft: false,
+      ShiftRight: false,
+      KeyE: false,
+      KeyF: false,
+    },
+    mouseDrag: false,
+    prevMouse: { x: 0, y: 0 },
+    orbitOffset: new THREE.Vector2(0, 0),
+    camYaw: 0,
+    camPitch: 0.18,
+  });
+
+  // Handle Land & Enter Area
+  const handleEnterNearestSanctuary = useCallback(() => {
+    if (nearSanctuaryRef.current && nearSanctuaryIslandRef.current) {
+      soundSynth.playChime(660);
+      onEnterArea(nearSanctuaryRef.current, nearSanctuaryIslandRef.current);
+    }
+  }, [onEnterArea]);
+
+  // Fast autopilot soar to selected island
+  const handleFastSoarToIsland = (targetIsland: HabitIsland) => {
+    soundSynth.playSpeedBoost();
+    const config = islandConfigs.find((c) => c.island.id === targetIsland.id);
+    if (!config) return;
+
+    // Reposition bird 75 units in front of island at high altitude with heading towards it
+    const approachDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2);
+    const targetPos = config.pos.clone().add(approachDir.multiplyScalar(config.radius + 60));
+    targetPos.y = config.pos.y + 45;
+
+    physicsRef.current.pos.copy(targetPos);
+    physicsRef.current.vel.set(0, 0, 0);
+    physicsRef.current.isGrounded = false;
+    setFlightState('SOARING');
+
+    // Look at island center
+    const toIsland = config.pos.clone().sub(targetPos).normalize();
+    physicsRef.current.yaw = Math.atan2(toIsland.x, toIsland.z) + Math.PI;
+    physicsRef.current.pitch = -0.15;
+    physicsRef.current.speed = 24;
+  };
+
+  // Convert HABIT_ISLANDS to 3D Space Coordinates
+  const islandConfigs: Island3DConfig[] = React.useMemo(() => {
+    return HABIT_ISLANDS.map((island) => {
+      const x = (island.x - 1100) * 0.45;
+      const z = (island.y - 850) * 0.45;
+
+      let y = 35;
+      let col = 0x38bdf8;
+      let acc = 0x60a5fa;
+      let beacon = 0x38bdf8;
+
+      switch (island.id) {
+        case 'nexus':
+          y = 30;
+          col = 0xf59e0b;
+          acc = 0xd97706;
+          beacon = 0xfbbf24;
+          break;
+        case 'spirituality':
+          y = 55;
+          col = 0x38bdf8;
+          acc = 0x0284c7;
+          beacon = 0x38bdf8;
+          break;
+        case 'reflection':
+          y = 45;
+          col = 0xf43f5e;
+          acc = 0xbe123c;
+          beacon = 0xfb7185;
+          break;
+        case 'vitality':
+          y = 40;
+          col = 0x10b981;
+          acc = 0x059669;
+          beacon = 0x34d399;
+          break;
+        case 'wisdom':
+          y = 65;
+          col = 0x3b82f6;
+          acc = 0x1d4ed8;
+          beacon = 0x60a5fa;
+          break;
+        case 'creation':
+          y = 50;
+          col = 0xa855f7;
+          acc = 0x7e22ce;
+          beacon = 0xc084fc;
+          break;
+      }
+
+      return {
+        island,
+        pos: new THREE.Vector3(x, y, z),
+        radius: island.radius * 0.4,
+        color: col,
+        accentColor: acc,
+        beaconColor: beacon,
+        height: y,
+      };
+    });
+  }, []);
+
+  // Time of Day Palette Presets for Skybox and Environment
+  const timeOfDayPalettes = React.useMemo(() => {
+    return {
+      dawn: {
+        skyTop: new THREE.Color(0x1c2b48),
+        skyHorizon: new THREE.Color(0xe07a5f),
+        skyBottom: new THREE.Color(0x3d2645),
+        sunPos: new THREE.Vector3(500, 320, -700).normalize(),
+        sunColor: new THREE.Color(0xffd166),
+        sunAuraColor: 0xf43f5e,
+        ambientColor: new THREE.Color(0xfde2e4),
+        ambientIntensity: 0.95,
+        dirColor: new THREE.Color(0xffe8d6),
+        dirIntensity: 1.8,
+        fogColor: new THREE.Color(0x1e202f),
+        cloudSeaColor: 0x241e30,
+      },
+      midday: {
+        skyTop: new THREE.Color(0x0ea5e9),
+        skyHorizon: new THREE.Color(0xbae6fd),
+        skyBottom: new THREE.Color(0x38bdf8),
+        sunPos: new THREE.Vector3(200, 900, -300).normalize(),
+        sunColor: new THREE.Color(0xffffff),
+        sunAuraColor: 0xfef08a,
+        ambientColor: new THREE.Color(0xe0f2fe),
+        ambientIntensity: 1.1,
+        dirColor: new THREE.Color(0xfffbeb),
+        dirIntensity: 2.2,
+        fogColor: new THREE.Color(0x7dd3fc),
+        cloudSeaColor: 0x1e3a5f,
+      },
+      golden_hour: {
+        skyTop: new THREE.Color(0x312e81),
+        skyHorizon: new THREE.Color(0xf59e0b),
+        skyBottom: new THREE.Color(0x7c2d12),
+        sunPos: new THREE.Vector3(450, 260, -750).normalize(),
+        sunColor: new THREE.Color(0xfde047),
+        sunAuraColor: 0xd97706,
+        ambientColor: new THREE.Color(0xfef3c7),
+        ambientIntensity: 0.9,
+        dirColor: new THREE.Color(0xfbbf24),
+        dirIntensity: 2.0,
+        fogColor: new THREE.Color(0x2d1f30),
+        cloudSeaColor: 0x361f2b,
+      },
+      twilight: {
+        skyTop: new THREE.Color(0x0f172a),
+        skyHorizon: new THREE.Color(0xa855f7),
+        skyBottom: new THREE.Color(0x3b0764),
+        sunPos: new THREE.Vector3(450, 150, -850).normalize(),
+        sunColor: new THREE.Color(0xf43f5e),
+        sunAuraColor: 0x9333ea,
+        ambientColor: new THREE.Color(0xc084fc),
+        ambientIntensity: 0.7,
+        dirColor: new THREE.Color(0xd946ef),
+        dirIntensity: 1.4,
+        fogColor: new THREE.Color(0x181028),
+        cloudSeaColor: 0x1f1430,
+      },
+      starlight: {
+        skyTop: new THREE.Color(0x030712),
+        skyHorizon: new THREE.Color(0x1e1b4b),
+        skyBottom: new THREE.Color(0x0f172a),
+        sunPos: new THREE.Vector3(300, 600, -700).normalize(),
+        sunColor: new THREE.Color(0xe0e7ff),
+        sunAuraColor: 0x6366f1,
+        ambientColor: new THREE.Color(0x818cf8),
+        ambientIntensity: 0.6,
+        dirColor: new THREE.Color(0xc7d2fe),
+        dirIntensity: 1.2,
+        fogColor: new THREE.Color(0x080c16),
+        cloudSeaColor: 0x0d131f,
+      },
+    };
+  }, []);
+
+  // Shared refs for dynamic time-of-day updates
+  const envRefs = useRef<{
+    skyMat?: THREE.ShaderMaterial;
+    sunGroup?: THREE.Group;
+    sunMeshMat?: THREE.MeshBasicMaterial;
+    sunAuraMat?: THREE.MeshBasicMaterial;
+    dirLight?: THREE.DirectionalLight;
+    ambientLight?: THREE.AmbientLight;
+    cloudSeaMat?: THREE.MeshStandardMaterial;
+    scene?: THREE.Scene;
+  }>({});
+
+  // Main Three.js Setup & Animation Loop
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+
+    soundSynth.init();
+
+    // 1. Scene, Camera, Renderer
+    const scene = new THREE.Scene();
+    envRefs.current.scene = scene;
+    const curPalette = timeOfDayPalettes[timeOfDay] || timeOfDayPalettes.dawn;
+    scene.fog = new THREE.FogExp2(curPalette.fogColor.getHex(), 0.0016);
+
+    const camera = new THREE.PerspectiveCamera(
+      65,
+      container.clientWidth / container.clientHeight,
+      0.5,
+      3500
+    );
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false,
+    });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // 2. Beautiful Skybox & Celestial Dome
+    const skyGeo = new THREE.SphereGeometry(2400, 32, 24);
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: curPalette.skyTop.clone() },
+        bottomColor: { value: curPalette.skyBottom.clone() },
+        horizonColor: { value: curPalette.skyHorizon.clone() },
+        sunPosition: { value: curPalette.sunPos.clone() },
+        time: { value: 0 },
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform vec3 horizonColor;
+        uniform vec3 sunPosition;
+        uniform float time;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vec3 dir = normalize(vWorldPosition);
+          float h = dir.y;
+
+          // Atmospheric gradient blending
+          vec3 sky = mix(horizonColor, topColor, max(h, 0.0));
+          if (h < 0.0) {
+            sky = mix(horizonColor, bottomColor, clamp(-h * 2.2, 0.0, 1.0));
+          }
+
+          // Subtle celestial shimmer / cosmic haze
+          float shimmer = sin(dir.x * 20.0 + time * 0.2) * cos(dir.z * 20.0 + time * 0.15) * 0.03;
+          sky += vec3(shimmer * 0.5, shimmer * 0.7, shimmer);
+
+          // Luminous sun flare & coronal atmosphere
+          float sunDot = max(dot(dir, sunPosition), 0.0);
+          vec3 sunCore = vec3(1.0, 0.95, 0.8) * pow(sunDot, 180.0) * 2.4;
+          vec3 sunHalo = vec3(1.0, 0.8, 0.5) * pow(sunDot, 18.0) * 0.75;
+          vec3 sunGlow = horizonColor * pow(sunDot, 4.0) * 0.45;
+
+          gl_FragColor = vec4(sky + sunCore + sunHalo + sunGlow, 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+    envRefs.current.skyMat = skyMat;
+    const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(skyMesh);
+
+    // Stars Field (3800 twinkling starlight points)
+    const starCount = 3800;
+    const starGeo = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      const r = 2100 + Math.random() * 200;
+      const sinPhi = Math.sin(phi);
+      starPositions[i * 3] = r * sinPhi * Math.cos(theta);
+      starPositions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) + 40;
+      starPositions[i * 3 + 2] = r * sinPhi * Math.sin(theta);
+
+      const isGold = Math.random() > 0.82;
+      const isCyan = !isGold && Math.random() > 0.75;
+      starColors[i * 3] = isGold ? 1.0 : isCyan ? 0.7 : 0.92;
+      starColors[i * 3 + 1] = isGold ? 0.88 : isCyan ? 0.9 : 0.96;
+      starColors[i * 3 + 2] = isGold ? 0.4 : 1.0;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+    const starMat = new THREE.PointsMaterial({
+      size: 3.8,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const starPoints = new THREE.Points(starGeo, starMat);
+    scene.add(starPoints);
+
+    // Sun disc mesh with radiant coronal lens aura
+    const sunGroup = new THREE.Group();
+    envRefs.current.sunGroup = sunGroup;
+    const sunMeshMat = new THREE.MeshBasicMaterial({ color: curPalette.sunColor });
+    envRefs.current.sunMeshMat = sunMeshMat;
+    const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(42, 16, 16), sunMeshMat);
+    sunGroup.add(sunMesh);
+
+    const sunAuraMat = new THREE.MeshBasicMaterial({
+      color: curPalette.sunAuraColor,
+      transparent: true,
+      opacity: 0.38,
+      side: THREE.DoubleSide,
+    });
+    envRefs.current.sunAuraMat = sunAuraMat;
+    const sunAura = new THREE.Mesh(new THREE.RingGeometry(42, 180, 36), sunAuraMat);
+    sunGroup.add(sunAura);
+    sunGroup.position.copy(curPalette.sunPos).multiplyScalar(1000);
+    sunAura.lookAt(0, 0, 0);
+    scene.add(sunGroup);
+
+    // 3. Shimmering Ocean of Clouds beneath islands
+    const cloudSeaGeo = new THREE.PlaneGeometry(3800, 3800, 64, 64);
+    const cloudSeaMat = new THREE.MeshStandardMaterial({
+      color: curPalette.cloudSeaColor,
+      roughness: 0.35,
+      metalness: 0.2,
+      emissive: 0x0c1420,
+      emissiveIntensity: 0.35,
+      transparent: true,
+      opacity: 0.88,
+    });
+    envRefs.current.cloudSeaMat = cloudSeaMat;
+    const cloudSea = new THREE.Mesh(cloudSeaGeo, cloudSeaMat);
+    cloudSea.rotation.x = -Math.PI / 2;
+    cloudSea.position.y = -60;
+    scene.add(cloudSea);
+
+    // Floating fluffy cloud clusters
+    const cloudGroup = new THREE.Group();
+    const cloudMat = new THREE.MeshStandardMaterial({
+      color: 0xe2eaf4,
+      roughness: 0.85,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.48,
+    });
+    for (let c = 0; c < 32; c++) {
+      const puffCluster = new THREE.Group();
+      const numPuffs = 4 + Math.floor(Math.random() * 5);
+      for (let p = 0; p < numPuffs; p++) {
+        const radius = 24 + Math.random() * 38;
+        const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 1), cloudMat);
+        puff.position.set(
+          (Math.random() - 0.5) * 70,
+          (Math.random() - 0.5) * 18,
+          (Math.random() - 0.5) * 70
+        );
+        puffCluster.add(puff);
+      }
+      puffCluster.position.set(
+        (Math.random() - 0.5) * 1800,
+        -15 + Math.random() * 50,
+        (Math.random() - 0.5) * 1800
+      );
+      cloudGroup.add(puffCluster);
+    }
+    scene.add(cloudGroup);
+
+    // Ambient floating celestial feathers / dust motes in sky
+    const moteCount = 180;
+    const moteGeo = new THREE.BufferGeometry();
+    const motePos = new Float32Array(moteCount * 3);
+    for (let i = 0; i < moteCount; i++) {
+      motePos[i * 3] = (Math.random() - 0.5) * 200;
+      motePos[i * 3 + 1] = (Math.random() - 0.5) * 100;
+      motePos[i * 3 + 2] = (Math.random() - 0.5) * 200;
+    }
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+    const moteMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 2.2,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending,
+    });
+    const motePoints = new THREE.Points(moteGeo, moteMat);
+    scene.add(motePoints);
+
+    // 4. Lighting
+    const ambientLight = new THREE.AmbientLight(curPalette.ambientColor, curPalette.ambientIntensity);
+    envRefs.current.ambientLight = ambientLight;
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(curPalette.dirColor, curPalette.dirIntensity);
+    dirLight.position.copy(curPalette.sunPos).multiplyScalar(1000);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 100;
+    dirLight.shadow.camera.far = 2500;
+    const shadowD = 800;
+    dirLight.shadow.camera.left = -shadowD;
+    dirLight.shadow.camera.right = shadowD;
+    dirLight.shadow.camera.top = shadowD;
+    dirLight.shadow.camera.bottom = -shadowD;
+    envRefs.current.dirLight = dirLight;
+    scene.add(dirLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x1f1a26, 0.65);
+    scene.add(hemiLight);
+
+    // 5. Construct 3D Floating Habit Islands
+    const islandMeshes: THREE.Group[] = [];
+    const islandBeaconRays: THREE.Mesh[] = [];
+
+    islandConfigs.forEach((cfg) => {
+      const islandRoot = new THREE.Group();
+      islandRoot.position.copy(cfg.pos);
+
+      // Main plateau top
+      const topGeo = new THREE.CylinderGeometry(cfg.radius, cfg.radius * 0.85, 12, 32);
+      const topMat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        roughness: 0.65,
+        metalness: 0.15,
+        flatShading: true,
+      });
+      const topMesh = new THREE.Mesh(topGeo, topMat);
+      topMesh.receiveShadow = true;
+      islandRoot.add(topMesh);
+
+      // Rugged bottom floating stalactite
+      const botGeo = new THREE.ConeGeometry(cfg.radius * 0.85, cfg.radius * 1.4, 24);
+      const botMat = new THREE.MeshStandardMaterial({
+        color: 0x1e242b,
+        roughness: 0.95,
+        flatShading: true,
+      });
+      const botMesh = new THREE.Mesh(botGeo, botMat);
+      botMesh.rotation.x = Math.PI;
+      botMesh.position.y = -cfg.radius * 0.7;
+      botMesh.castShadow = true;
+      islandRoot.add(botMesh);
+
+      // Outer glowing sanctuary boundary ring
+      const ringGeo = new THREE.TorusGeometry(cfg.radius * 1.08, 1.2, 12, 48);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: cfg.beaconColor,
+        transparent: true,
+        opacity: 0.45,
+      });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      ringMesh.position.y = 2;
+      islandRoot.add(ringMesh);
+
+      // Landmark / Monument structure in center
+      const landmarkGroup = new THREE.Group();
+      landmarkGroup.position.y = 6;
+
+      if (cfg.island.id === 'spirituality') {
+        const dome = new THREE.Mesh(
+          new THREE.SphereGeometry(18, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({
+            color: 0xbae6fd,
+            roughness: 0.2,
+            metalness: 0.8,
+            transparent: true,
+            opacity: 0.85,
+          })
+        );
+        landmarkGroup.add(dome);
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const spire = new THREE.Mesh(
+            new THREE.ConeGeometry(2.5, 28, 6),
+            new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1 })
+          );
+          spire.position.set(Math.cos(angle) * 26, 14, Math.sin(angle) * 26);
+          landmarkGroup.add(spire);
+        }
+      } else if (cfg.island.id === 'reflection') {
+        const arch = new THREE.Mesh(
+          new THREE.TorusGeometry(20, 3, 12, 32, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.9 })
+        );
+        arch.position.y = 10;
+        landmarkGroup.add(arch);
+        const hearth = new THREE.Mesh(
+          new THREE.CylinderGeometry(8, 10, 4, 16),
+          new THREE.MeshStandardMaterial({ color: 0x27272a })
+        );
+        hearth.position.y = 2;
+        landmarkGroup.add(hearth);
+        const fire = new THREE.Mesh(
+          new THREE.OctahedronGeometry(6, 2),
+          new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+        );
+        fire.position.y = 8;
+        landmarkGroup.add(fire);
+      } else if (cfg.island.id === 'vitality') {
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(4, 7, 30, 8),
+          new THREE.MeshStandardMaterial({ color: 0x45220c })
+        );
+        trunk.position.y = 15;
+        landmarkGroup.add(trunk);
+        const foliage = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(22, 1),
+          new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.8 })
+        );
+        foliage.position.y = 36;
+        landmarkGroup.add(foliage);
+      } else if (cfg.island.id === 'wisdom') {
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(18, 22, 12, 16),
+          new THREE.MeshStandardMaterial({ color: 0xe2e8f0 })
+        );
+        base.position.y = 6;
+        landmarkGroup.add(base);
+        const astrolabe = new THREE.Mesh(
+          new THREE.TorusGeometry(16, 1.2, 12, 36),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.2 })
+        );
+        astrolabe.position.y = 22;
+        astrolabe.name = 'astrolabeRing';
+        landmarkGroup.add(astrolabe);
+      } else if (cfg.island.id === 'creation') {
+        const prism = new THREE.Mesh(
+          new THREE.OctahedronGeometry(14, 0),
+          new THREE.MeshStandardMaterial({
+            color: 0xc084fc,
+            metalness: 0.6,
+            roughness: 0.1,
+            transparent: true,
+            opacity: 0.9,
+          })
+        );
+        prism.position.y = 20;
+        landmarkGroup.add(prism);
+      } else {
+        // --- THE NEXUS INTRODUCTORY STRAIGHT SANCTUARY WALKWAY ---
+        const pathGroup = new THREE.Group();
+
+        // 1. Dark slate paver road base (spanning Z = -44 to +44, exactly aligned with Z axis)
+        const paverMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(8.0, 0.4, 88),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8, metalness: 0.2 })
+        );
+        paverMesh.position.set(0, 0.2, 0);
+        paverMesh.receiveShadow = true;
+        pathGroup.add(paverMesh);
+
+        // Golden Rune Runner down the exact center
+        const runeStripMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(1.8, 0.45, 88),
+          new THREE.MeshStandardMaterial({
+            color: 0xf59e0b,
+            emissive: 0xd97706,
+            emissiveIntensity: 0.4,
+            roughness: 0.4,
+          })
+        );
+        runeStripMesh.position.set(0, 0.22, 0);
+        pathGroup.add(runeStripMesh);
+
+        // Side Stone Border Curbs
+        const leftCurb = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.6, 88),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 })
+        );
+        leftCurb.position.set(-4.1, 0.3, 0);
+        pathGroup.add(leftCurb);
+
+        const rightCurb = leftCurb.clone();
+        rightCurb.position.x = 4.1;
+        pathGroup.add(rightCurb);
+
+        // 2. Starting Moon Gate / Arch of Intention at Z = -42 (behind the player start)
+        const archGroup = new THREE.Group();
+        archGroup.position.set(0, 0, -42);
+
+        const pillarLeft = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.65, 0.75, 8, 16),
+          new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 })
+        );
+        pillarLeft.position.set(-4.5, 4, 0);
+        archGroup.add(pillarLeft);
+
+        const pillarRight = pillarLeft.clone();
+        pillarRight.position.x = 4.5;
+        archGroup.add(pillarRight);
+
+        const archLintel = new THREE.Mesh(
+          new THREE.BoxGeometry(11, 1.2, 1.4),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 })
+        );
+        archLintel.position.set(0, 8.2, 0);
+        archGroup.add(archLintel);
+
+        const crownJewel = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.8, 0),
+          new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.9 })
+        );
+        crownJewel.position.set(0, 9.4, 0);
+        archGroup.add(crownJewel);
+
+        pathGroup.add(archGroup);
+
+        // 3. Runway of Glowing Stone Lantern Pedestals along the straight path
+        const lanternZCoords = [-32, -20, -10, 10, 20, 32];
+        lanternZCoords.forEach((lz) => {
+          [-4.8, 4.8].forEach((lx) => {
+            const pedestal = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.35, 0.45, 2.4, 8),
+              new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 })
+            );
+            pedestal.position.set(lx, 1.2, lz);
+            pathGroup.add(pedestal);
+
+            const lanternOrb = new THREE.Mesh(
+              new THREE.SphereGeometry(0.38, 12, 12),
+              new THREE.MeshStandardMaterial({
+                color: 0xfbbf24,
+                emissive: 0xf59e0b,
+                emissiveIntensity: 1.2,
+                roughness: 0.2,
+              })
+            );
+            lanternOrb.position.set(lx, 2.6, lz);
+            pathGroup.add(lanternOrb);
+          });
+        });
+
+        // 4. Center Astral Sundial Plaza at Z = 0
+        const plazaBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(14, 15, 0.45, 32),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 })
+        );
+        plazaBase.position.set(0, 0.22, 0);
+        pathGroup.add(plazaBase);
+
+        // Gilded Astral Rings Monument (offset to left at X = -7.5, leaving path open for walking straight)
+        const sundialBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(3, 4, 1.8, 16),
+          new THREE.MeshStandardMaterial({ color: 0x334155 })
+        );
+        sundialBase.position.set(-7.5, 1.0, 0);
+        pathGroup.add(sundialBase);
+
+        const sundialRings = new THREE.Mesh(
+          new THREE.TorusGeometry(3.5, 0.25, 12, 32),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 })
+        );
+        sundialRings.rotation.x = Math.PI / 4;
+        sundialRings.position.set(-7.5, 3.2, 0);
+        pathGroup.add(sundialRings);
+
+        const gnomonPillar = new THREE.Mesh(
+          new THREE.ConeGeometry(0.5, 6, 8),
+          new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.7 })
+        );
+        gnomonPillar.position.set(-7.5, 4.0, 0);
+        pathGroup.add(gnomonPillar);
+
+        // 5. Introductory Inscription Steles along the walkway
+        const stele1 = new THREE.Mesh(
+          new THREE.BoxGeometry(1.0, 2.6, 0.3),
+          new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 })
+        );
+        stele1.position.set(-4.8, 1.3, -20);
+        pathGroup.add(stele1);
+
+        const stele2 = stele1.clone();
+        stele2.position.set(-4.8, 1.3, 20);
+        pathGroup.add(stele2);
+
+        // 6. The Celestial Flight Overlook Terrace at Z = +42
+        const terrace = new THREE.Mesh(
+          new THREE.CylinderGeometry(8, 9, 0.5, 24, 1, false, 0, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 })
+        );
+        terrace.rotation.y = -Math.PI / 2;
+        terrace.position.set(0, 0.25, 43);
+        pathGroup.add(terrace);
+
+        // Luminous Flight Launchpad Ring at Overlook
+        const launchRing = new THREE.Mesh(
+          new THREE.TorusGeometry(3.6, 0.2, 12, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x38bdf8,
+            emissive: 0x0284c7,
+            emissiveIntensity: 0.9,
+          })
+        );
+        launchRing.rotation.x = Math.PI / 2;
+        launchRing.position.set(0, 0.35, 41);
+        pathGroup.add(launchRing);
+
+        landmarkGroup.add(pathGroup);
+      }
+
+      islandRoot.add(landmarkGroup);
+
+      // Sky Beacon (Vertical Pillar of Light)
+      const beaconGeo = new THREE.CylinderGeometry(1.5, 4, 400, 16, 1, true);
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: cfg.beaconColor,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide,
+      });
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.y = 200;
+      islandRoot.add(beacon);
+      islandBeaconRays.push(beacon);
+
+      scene.add(islandRoot);
+      islandMeshes.push(islandRoot);
+    });
+
+    // 5.5. POPULATE TALKABLE SPIRITUAL NPCS ON THE ISLANDS
+    const npcEntities: {
+      npc: IslandNPC;
+      group: THREE.Group;
+      beaconRune: THREE.Mesh;
+      relicMesh: THREE.Mesh;
+      halo: THREE.Mesh;
+      worldPos: THREE.Vector3;
+    }[] = [];
+
+    ISLAND_NPCS.forEach((npc) => {
+      const islandCfg = islandConfigs.find((c) => c.island.id === npc.islandId);
+      if (!islandCfg) return;
+
+      const entity = createNPCEntity(npc);
+      const worldX = islandCfg.pos.x + npc.localPos.x;
+      const worldY = islandCfg.pos.y + npc.localPos.y;
+      const worldZ = islandCfg.pos.z + npc.localPos.z;
+
+      entity.group.position.set(worldX, worldY, worldZ);
+      // Face towards approaching fliers
+      entity.group.lookAt(islandCfg.pos.x, worldY, islandCfg.pos.z);
+      entity.group.rotation.y += Math.PI; // Face outwards toward visitor
+      scene.add(entity.group);
+
+      npcEntities.push({
+        npc,
+        group: entity.group,
+        beaconRune: entity.beaconRune,
+        relicMesh: entity.relicMesh,
+        halo: entity.halo,
+        worldPos: new THREE.Vector3(worldX, worldY, worldZ),
+      });
+    });
+
+    // 6. Floating Starlight Essence Rings in Sky
+    const essenceRings: { mesh: THREE.Mesh; pos: THREE.Vector3; collected: boolean }[] = [];
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      side: THREE.DoubleSide,
+    });
+    for (let r = 0; r < 20; r++) {
+      const angle = (r / 20) * Math.PI * 2;
+      const radius = 180 + (r % 3) * 110;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      const y = 60 + Math.sin(r * 2) * 35;
+
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(8, 0.9, 12, 32), ringMat.clone());
+      ring.position.set(x, y, z);
+      ring.lookAt(0, y, 0);
+      scene.add(ring);
+      essenceRings.push({ mesh: ring, pos: ring.position, collected: false });
+    }
+
+    // 7. BUILD THE MAJESTIC SPIRITUAL WHITE BIRD
+    const birdRoot = new THREE.Group();
+    const birdBody = new THREE.Group();
+    birdBody.visible = false; // Initially grounded with Wayfarer character
+    birdRoot.add(birdBody);
+
+    // Materials for White Bird
+    const whiteFeatherMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.28,
+      metalness: 0.08,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.08,
+    });
+
+    const softWingTipMat = new THREE.MeshStandardMaterial({
+      color: 0xf0fdf4,
+      roughness: 0.2,
+      metalness: 0.12,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.22,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+    });
+
+    const amberGoldBeakMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      roughness: 0.25,
+      metalness: 0.5,
+    });
+
+    const darkEyeMat = new THREE.MeshStandardMaterial({
+      color: 0x090d16,
+      roughness: 0.1,
+      metalness: 0.9,
+    });
+
+    const talonGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      roughness: 0.4,
+      metalness: 0.6,
+    });
+
+    // Main Torso / Aerodynamic Breast & Body
+    const torsoGeo = new THREE.SphereGeometry(1.0, 24, 18);
+    const torso = new THREE.Mesh(torsoGeo, whiteFeatherMat);
+    torso.scale.set(0.85, 0.72, 1.85);
+    torso.position.set(0, 0, 0);
+    torso.castShadow = true;
+    birdBody.add(torso);
+
+    // Rounded Upper Breast (Keel)
+    const breastGeo = new THREE.SphereGeometry(0.75, 16, 16);
+    const breast = new THREE.Mesh(breastGeo, whiteFeatherMat);
+    breast.scale.set(0.8, 0.85, 0.95);
+    breast.position.set(0, -0.1, 0.55);
+    breast.castShadow = true;
+    birdBody.add(breast);
+
+    // Inner Glowing Soul Crystal / Heart of Light
+    const heartGeo = new THREE.OctahedronGeometry(0.32, 1);
+    const heartMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const heartMesh = new THREE.Mesh(heartGeo, heartMat);
+    heartMesh.position.set(0, 0, 0.2);
+    birdBody.add(heartMesh);
+
+    // Avian Neck & Sleek Head
+    const neckGeo = new THREE.CylinderGeometry(0.38, 0.55, 0.85, 16);
+    const neck = new THREE.Mesh(neckGeo, whiteFeatherMat);
+    neck.position.set(0, 0.45, 0.85);
+    neck.rotation.x = 0.55;
+    birdBody.add(neck);
+
+    const headGeo = new THREE.SphereGeometry(0.48, 18, 16);
+    const head = new THREE.Mesh(headGeo, whiteFeatherMat);
+    head.scale.set(0.78, 0.88, 1.05);
+    head.position.set(0, 0.82, 1.18);
+    head.castShadow = true;
+    birdBody.add(head);
+
+    // Elegant Curved Golden Beak
+    const beakGeo = new THREE.ConeGeometry(0.18, 0.72, 10);
+    const beak = new THREE.Mesh(beakGeo, amberGoldBeakMat);
+    beak.position.set(0, 0.72, 1.74);
+    beak.rotation.x = Math.PI / 2 - 0.15;
+    beak.castShadow = true;
+    birdBody.add(beak);
+
+    // Keen Avian Eyes (Left & Right)
+    const eyeGeo = new THREE.SphereGeometry(0.1, 12, 12);
+    const leftEye = new THREE.Mesh(eyeGeo, darkEyeMat);
+    leftEye.position.set(0.32, 0.88, 1.28);
+    birdBody.add(leftEye);
+
+    const rightEye = new THREE.Mesh(eyeGeo, darkEyeMat);
+    rightEye.position.set(-0.32, 0.88, 1.28);
+    birdBody.add(rightEye);
+
+    // Flowing Feathery Crown Crest
+    const crestGroup = new THREE.Group();
+    crestGroup.position.set(0, 1.05, 1.0);
+    for (let c = 0; c < 4; c++) {
+      const plumeGeo = new THREE.ConeGeometry(0.08, 0.65 + c * 0.15, 6);
+      const plume = new THREE.Mesh(plumeGeo, softWingTipMat);
+      plume.position.set(0, 0.15 + c * 0.05, -c * 0.18);
+      plume.rotation.x = -0.55 - c * 0.18;
+      crestGroup.add(plume);
+    }
+    birdBody.add(crestGroup);
+
+    // Celestial Golden Halo hovering over the bird's crown
+    const haloGeo = new THREE.TorusGeometry(0.7, 0.038, 8, 32);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const halo = new THREE.Mesh(haloGeo, haloMat);
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(0, 1.55, 1.1);
+    birdBody.add(halo);
+
+    // ARTICULATED FEATHERED WINGS (Left & Right)
+    // Structure: Shoulder -> MidWing -> Primaries & Secondaries
+    const createBirdWing = (isLeft: boolean) => {
+      const wingRoot = new THREE.Group();
+      const mult = isLeft ? 1 : -1;
+
+      // Shoulder / Humerus
+      const shoulderJoint = new THREE.Group();
+      wingRoot.add(shoulderJoint);
+
+      const shoulderBone = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.32, 1.8, 10),
+        whiteFeatherMat
+      );
+      shoulderBone.position.set(mult * 0.9, 0, 0);
+      shoulderBone.rotation.z = mult * 1.57;
+      shoulderJoint.add(shoulderBone);
+
+      // Mid Wing / Forearm Joint
+      const midWingJoint = new THREE.Group();
+      midWingJoint.position.set(mult * 1.8, 0, 0);
+      shoulderJoint.add(midWingJoint);
+
+      const forearmBone = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.24, 2.2, 10),
+        whiteFeatherMat
+      );
+      forearmBone.position.set(mult * 1.1, 0, 0);
+      forearmBone.rotation.z = mult * 1.57;
+      midWingJoint.add(forearmBone);
+
+      // Primary Flight Feathers (Long sculpted outer feathers)
+      const primaryFeathersGroup = new THREE.Group();
+      midWingJoint.add(primaryFeathersGroup);
+
+      const numPrimaries = 7;
+      for (let i = 0; i < numPrimaries; i++) {
+        const length = 2.6 - i * 0.25;
+        const width = 0.38;
+        const feather = new THREE.Mesh(
+          new THREE.BoxGeometry(width, length, 0.05),
+          softWingTipMat
+        );
+        feather.position.set(
+          mult * (1.2 + i * 0.45),
+          -length * 0.45,
+          -0.2 - i * 0.12
+        );
+        feather.rotation.z = mult * (0.35 + i * 0.08);
+        feather.rotation.y = mult * (-0.15 - i * 0.05);
+        feather.rotation.x = -0.15;
+        feather.castShadow = true;
+        primaryFeathersGroup.add(feather);
+      }
+
+      // Secondary Flight Feathers (Inner trailing edge)
+      const numSecondaries = 6;
+      for (let j = 0; j < numSecondaries; j++) {
+        const sLength = 1.8 - j * 0.15;
+        const sWidth = 0.35;
+        const sFeather = new THREE.Mesh(
+          new THREE.BoxGeometry(sWidth, sLength, 0.05),
+          whiteFeatherMat
+        );
+        sFeather.position.set(
+          mult * (0.3 + j * 0.3),
+          -sLength * 0.45,
+          -0.45 - j * 0.06
+        );
+        sFeather.rotation.z = mult * 0.2;
+        sFeather.rotation.x = -0.22;
+        shoulderJoint.add(sFeather);
+      }
+
+      return {
+        wingRoot,
+        shoulderJoint,
+        midWingJoint,
+        primaryFeathersGroup,
+      };
+    };
+
+    const leftWing = createBirdWing(true);
+    leftWing.wingRoot.position.set(0.65, 0.2, 0.2);
+    birdBody.add(leftWing.wingRoot);
+
+    const rightWing = createBirdWing(false);
+    rightWing.wingRoot.position.set(-0.65, 0.2, 0.2);
+    birdBody.add(rightWing.wingRoot);
+
+    // Graceful Tiered Fan Tail Feathers
+    const tailGroup = new THREE.Group();
+    tailGroup.position.set(0, 0.1, -1.5);
+    const numTailFeathers = 7;
+    for (let t = 0; t < numTailFeathers; t++) {
+      const spread = (t - 3) * 0.16; // -0.48 to +0.48
+      const centerDist = Math.abs(t - 3);
+      const length = 2.4 - centerDist * 0.25;
+      const tFeather = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, length, 0.04),
+        whiteFeatherMat
+      );
+      tFeather.position.set(spread * 1.4, -0.05, -length * 0.48);
+      tFeather.rotation.y = spread * 0.45;
+      tFeather.rotation.x = -0.15;
+      tFeather.castShadow = true;
+      tailGroup.add(tFeather);
+    }
+    birdBody.add(tailGroup);
+
+    // Tucked Flight Talons / Ground Perching Feet
+    const feetGroup = new THREE.Group();
+    feetGroup.position.set(0, -0.55, -0.3);
+    const leftFoot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.08, 0.6, 6),
+      talonGoldMat
+    );
+    leftFoot.position.set(0.3, 0, 0);
+    leftFoot.rotation.x = 0.5;
+    feetGroup.add(leftFoot);
+
+    const rightFoot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.08, 0.6, 6),
+      talonGoldMat
+    );
+    rightFoot.position.set(-0.3, 0, 0);
+    rightFoot.rotation.x = 0.5;
+    feetGroup.add(rightFoot);
+    birdBody.add(feetGroup);
+
+    // ==========================================
+    // 7B. GROUNDED HUMANOID CHARACTER MODEL
+    // Transforms from bird when player touches land!
+    // Visible gear: Head Cowl/Circlet, Chest Armor, Equipped Weapon in Hand, Sacred Amulet, Traveler Boots
+    // ==========================================
+    const humanoidBody = new THREE.Group();
+    humanoidBody.position.set(0, 0, 0);
+    humanoidBody.visible = true; // Start with character visible
+    birdRoot.add(humanoidBody);
+
+    // Gear visual styling from character.equipment
+    const eq = character.equipment || {
+      head: null,
+      chest: null,
+      weapon: null,
+      accessory: null,
+      feet: null,
+    };
+    const headColor = eq.head?.visualColor ? parseInt(eq.head.visualColor.replace('#', '0x')) : 0x38bdf8;
+    const chestColor = eq.chest?.visualColor ? parseInt(eq.chest.visualColor.replace('#', '0x')) : 0x10b981;
+    const weaponColor = eq.weapon?.visualColor ? parseInt(eq.weapon.visualColor.replace('#', '0x')) : 0xc084fc;
+    const accessoryColor = eq.accessory?.visualColor ? parseInt(eq.accessory.visualColor.replace('#', '0x')) : 0xf43f5e;
+    const feetColor = eq.feet?.visualColor ? parseInt(eq.feet.visualColor.replace('#', '0x')) : 0x475569;
+
+    const charSkinMat = new THREE.MeshStandardMaterial({
+      color: 0xfef08a,
+      roughness: 0.45,
+      metalness: 0.1,
+      emissive: 0xfde047,
+      emissiveIntensity: 0.12,
+    });
+
+    const charChestMat = new THREE.MeshStandardMaterial({
+      color: chestColor,
+      roughness: 0.35,
+      metalness: 0.4,
+      emissive: chestColor,
+      emissiveIntensity: 0.22,
+    });
+
+    const charHeadGearMat = new THREE.MeshStandardMaterial({
+      color: headColor,
+      roughness: 0.3,
+      metalness: 0.5,
+      emissive: headColor,
+      emissiveIntensity: 0.28,
+    });
+
+    const charWeaponMat = new THREE.MeshStandardMaterial({
+      color: weaponColor,
+      roughness: 0.2,
+      metalness: 0.85,
+      emissive: weaponColor,
+      emissiveIntensity: 0.65,
+    });
+
+    const charAccessoryMat = new THREE.MeshStandardMaterial({
+      color: accessoryColor,
+      roughness: 0.15,
+      metalness: 0.9,
+      emissive: accessoryColor,
+      emissiveIntensity: 0.8,
+    });
+
+    const charBootsMat = new THREE.MeshStandardMaterial({
+      color: feetColor,
+      roughness: 0.6,
+      metalness: 0.25,
+    });
+
+    const charGoldAccentMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      roughness: 0.2,
+      metalness: 0.85,
+    });
+
+    // 1. Torso & Discipline Vestment
+    const charTorsoGroup = new THREE.Group();
+    charTorsoGroup.position.set(0, 1.8, 0);
+    humanoidBody.add(charTorsoGroup);
+
+    const charTorsoMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.52, 0.42, 1.45, 16),
+      charChestMat
+    );
+    charTorsoMesh.castShadow = true;
+    charTorsoGroup.add(charTorsoMesh);
+
+    // Golden Belt Sash & Discipline Buckle
+    const charBelt = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.48, 0.48, 0.22, 16),
+      charGoldAccentMat
+    );
+    charBelt.position.set(0, -0.6, 0);
+    charTorsoGroup.add(charBelt);
+
+    const charBuckle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.24, 0.12),
+      charGoldAccentMat
+    );
+    charBuckle.position.set(0, -0.6, 0.48);
+    charTorsoGroup.add(charBuckle);
+
+    // Flowing Wayfarer Cloak
+    const charCloak = new THREE.Mesh(
+      new THREE.BoxGeometry(0.92, 1.85, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.85,
+        side: THREE.DoubleSide,
+      })
+    );
+    charCloak.position.set(0, -0.4, -0.46);
+    charTorsoGroup.add(charCloak);
+
+    // 2. Head & Cowl / Circlet
+    const charHeadGroup = new THREE.Group();
+    charHeadGroup.position.set(0, 1.0, 0);
+    charTorsoGroup.add(charHeadGroup);
+
+    const charHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.38, 16, 16),
+      charSkinMat
+    );
+    charHead.castShadow = true;
+    charHeadGroup.add(charHead);
+
+    // Head Gear: Cowl / Hood
+    const charCowl = new THREE.Mesh(
+      new THREE.SphereGeometry(0.44, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.75),
+      charHeadGearMat
+    );
+    charCowl.position.set(0, 0.06, 0);
+    charHeadGroup.add(charCowl);
+
+    // Head Jewel / Circlet crest
+    const charHeadCrest = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.12, 0),
+      charGoldAccentMat
+    );
+    charHeadCrest.position.set(0, 0.35, 0.4);
+    charHeadGroup.add(charHeadCrest);
+
+    // Floating Sacred Halo / Starlight Ring above head
+    const charHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.55, 0.03, 8, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.88 })
+    );
+    charHalo.rotation.x = Math.PI / 2;
+    charHalo.position.set(0, 0.7, 0);
+    charHeadGroup.add(charHalo);
+
+    // 3. Neck & Sacred Accessory Relic
+    const charAmulet = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.16, 0),
+      charAccessoryMat
+    );
+    charAmulet.position.set(0, 0.28, 0.5);
+    charTorsoGroup.add(charAmulet);
+
+    // 4. Arms & Equipped Weapon
+    // Left Arm (Balanced posture)
+    const charLeftArmGroup = new THREE.Group();
+    charLeftArmGroup.position.set(0.68, 0.45, 0);
+    charTorsoGroup.add(charLeftArmGroup);
+
+    const charLeftPauldron = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 12, 12),
+      charChestMat
+    );
+    charLeftArmGroup.add(charLeftPauldron);
+
+    const charLeftArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.1, 1.1, 10),
+      charSkinMat
+    );
+    charLeftArm.position.set(0, -0.55, 0);
+    charLeftArmGroup.add(charLeftArm);
+
+    // Right Arm (Holding weapon)
+    const charRightArmGroup = new THREE.Group();
+    charRightArmGroup.position.set(-0.68, 0.45, 0);
+    charTorsoGroup.add(charRightArmGroup);
+
+    const charRightPauldron = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 12, 12),
+      charChestMat
+    );
+    charRightArmGroup.add(charRightPauldron);
+
+    const charRightArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.1, 1.1, 10),
+      charSkinMat
+    );
+    charRightArm.position.set(0, -0.55, 0);
+    charRightArmGroup.add(charRightArm);
+
+    // Equipped Weapon in Right Hand (Scribe Stylus / Sacred Spear)
+    const charWeaponGroup = new THREE.Group();
+    charWeaponGroup.position.set(0, -1.0, 0.35);
+    charWeaponGroup.rotation.x = 0.35;
+    charRightArmGroup.add(charWeaponGroup);
+
+    const charStaff = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 2.2, 8),
+      charGoldAccentMat
+    );
+    charWeaponGroup.add(charStaff);
+
+    const charWeaponTip = new THREE.Mesh(
+      new THREE.ConeGeometry(0.14, 0.8, 8),
+      charWeaponMat
+    );
+    charWeaponTip.position.set(0, 1.3, 0);
+    charWeaponGroup.add(charWeaponTip);
+
+    // 5. Legs & Traveler Boots
+    // Left Leg
+    const charLeftLegGroup = new THREE.Group();
+    charLeftLegGroup.position.set(0.28, -0.7, 0);
+    charTorsoGroup.add(charLeftLegGroup);
+
+    const charLeftLeg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.12, 1.2, 10),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b })
+    );
+    charLeftLeg.position.set(0, -0.5, 0);
+    charLeftLegGroup.add(charLeftLeg);
+
+    const charLeftBoot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.35, 0.5),
+      charBootsMat
+    );
+    charLeftBoot.position.set(0, -1.05, 0.1);
+    charLeftLegGroup.add(charLeftBoot);
+
+    // Right Leg
+    const charRightLegGroup = new THREE.Group();
+    charRightLegGroup.position.set(-0.28, -0.7, 0);
+    charTorsoGroup.add(charRightLegGroup);
+
+    const charRightLeg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.12, 1.2, 10),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b })
+    );
+    charRightLeg.position.set(0, -0.5, 0);
+    charRightLegGroup.add(charRightLeg);
+
+    const charRightBoot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.35, 0.5),
+      charBootsMat
+    );
+    charRightBoot.position.set(0, -1.05, 0.1);
+    charRightLegGroup.add(charRightBoot);
+
+    // 6. Ground Sacred Lotus Aura (Rotates under feet)
+    const charGroundAura = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 2.2, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide,
+      })
+    );
+    charGroundAura.rotation.x = Math.PI / 2;
+    charGroundAura.position.set(0, -1.8, 0);
+    humanoidBody.add(charGroundAura);
+
+    // 7. Transformation Ring Shockwave FX
+    const transformAuraMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.3, 5.0, 36),
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+      })
+    );
+    transformAuraMesh.rotation.x = Math.PI / 2;
+    transformAuraMesh.position.set(0, -1.0, 0);
+    birdRoot.add(transformAuraMesh);
+
+    let walkPhase = 0;
+    let idlePhase = 0;
+    let transformAnimTime = 0;
+
+    scene.add(birdRoot);
+
+    // Dual Wingtip Starlight Ribbon Particle Trails
+    const trailCount = 90;
+    const createTrailSystem = (color: number) => {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(trailCount * 3);
+      for (let i = 0; i < trailCount * 3; i++) pos[i] = 0;
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({
+        color,
+        size: 3.5,
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+      });
+      const points = new THREE.Points(geo, mat);
+      scene.add(points);
+      return { geo, points, headIdx: 0 };
+    };
+
+    const leftTrail = createTrailSystem(0x7dd3fc);
+    const rightTrail = createTrailSystem(0xfde047);
+
+    // 8. POST-PROCESSING (EffectComposer + Bloom + Depth of Field)
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
+      0.45, // strength
+      0.35, // radius
+      0.82  // threshold
+    );
+    bloomPassRef.current = bloomPass;
+    composer.addPass(bloomPass);
+
+    const bokehPass = new BokehPass(scene, camera, {
+      focus: 14.0,
+      aperture: 0.00010,
+      maxblur: 0.012,
+    });
+    composer.addPass(bokehPass);
+
+    // Dynamic Speedlines / Wind Streak Particle System
+    const speedlineCount = 48;
+    const speedlineGeo = new THREE.BufferGeometry();
+    const speedlinePos = new Float32Array(speedlineCount * 6);
+    for (let i = 0; i < speedlineCount; i++) {
+      const sx = (Math.random() - 0.5) * 24;
+      const sy = (Math.random() - 0.5) * 14;
+      const sz = (Math.random() - 0.5) * 36;
+      const len = 4.0 + Math.random() * 6.0;
+      speedlinePos[i * 6] = sx;
+      speedlinePos[i * 6 + 1] = sy;
+      speedlinePos[i * 6 + 2] = sz;
+      speedlinePos[i * 6 + 3] = sx;
+      speedlinePos[i * 6 + 4] = sy;
+      speedlinePos[i * 6 + 5] = sz - len;
+    }
+    speedlineGeo.setAttribute('position', new THREE.BufferAttribute(speedlinePos, 3));
+    const speedlineMat = new THREE.LineBasicMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    const speedlineMesh = new THREE.LineSegments(speedlineGeo, speedlineMat);
+    scene.add(speedlineMesh);
+
+    // Ground Contact Drop Shadow Disc (grounding character & bird cleanly to surface)
+    const contactShadowGeo = new THREE.CircleGeometry(1.6, 24);
+    const contactShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x070b10,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+    });
+    const contactShadow = new THREE.Mesh(contactShadowGeo, contactShadowMat);
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.y = 0.05;
+    scene.add(contactShadow);
+
+    // 9. Key Listeners for Flight Controls
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If NPC Dialogue is active, intercept navigation keys for Pokemon-style line advancing
+      if (isDialogueOpenRef.current) {
+        if (e.code === 'Escape') {
+          handleCloseDialogueRef.current();
+          e.preventDefault();
+        } else if (
+          e.code === 'Space' ||
+          e.code === 'Enter' ||
+          e.code === 'KeyE' ||
+          e.code === 'KeyT'
+        ) {
+          handleAdvanceDialogueRef.current();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      const keys = physicsRef.current.keys;
+      if (e.code in keys) {
+        keys[e.code as keyof typeof keys] = true;
+      }
+      if (e.code === 'ArrowUp') keys.KeyW = true;
+      if (e.code === 'ArrowDown') keys.KeyS = true;
+      if (e.code === 'ArrowLeft') keys.KeyA = true;
+      if (e.code === 'ArrowRight') keys.KeyD = true;
+
+      if (e.code === 'KeyT') {
+        if (nearNPCRef.current) {
+          handleOpenNPCDialogue(nearNPCRef.current);
+          e.preventDefault();
+        }
+      }
+      if (e.code === 'KeyE') {
+        if (nearNPCRef.current) {
+          handleOpenNPCDialogue(nearNPCRef.current);
+          e.preventDefault();
+        } else {
+          handleEnterNearestSanctuary();
+        }
+      }
+      if (e.code === 'KeyC') {
+        setCameraMode((prev) => (prev === 'chase' ? 'cinematic' : prev === 'cinematic' ? 'firstPerson' : 'chase'));
+      }
+      if (e.code === 'KeyM') {
+        const muted = soundSynth.toggleMute();
+        setIsMuted(muted);
+      }
+      if (e.code === 'KeyG') {
+        setIsGearPanelOpen((prev) => !prev);
+        e.preventDefault();
+      }
+      if (e.code === 'KeyF') {
+        // Toggle land/flight
+        physicsRef.current.isGrounded = !physicsRef.current.isGrounded;
+        if (!physicsRef.current.isGrounded) {
+          physicsRef.current.pos.y += 10;
+          physicsRef.current.speed = 18;
+          soundSynth.playWingWhoosh();
+          transformAnimTime = 0.9;
+          setIsGroundedUI(false);
+          triggerTransformToastRef.current('Ascended to Flight — Transformed to Celestial Bird');
+        } else {
+          physicsRef.current.vel.set(0, 0, 0);
+          soundSynth.playChime(660);
+          soundSynth.playItemObtain();
+          transformAnimTime = 0.9;
+          setIsGroundedUI(true);
+          triggerTransformToastRef.current('Landed — Transformed to Wayfarer [Press G for Gear]');
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const keys = physicsRef.current.keys;
+      if (e.code in keys) {
+        keys[e.code as keyof typeof keys] = false;
+      }
+      if (e.code === 'ArrowUp') keys.KeyW = false;
+      if (e.code === 'ArrowDown') keys.KeyS = false;
+      if (e.code === 'ArrowLeft') keys.KeyA = false;
+      if (e.code === 'ArrowRight') keys.KeyD = false;
+    };
+
+    // Canvas click: raycast to talkable NPCs
+    const handleCanvasClick = (e: MouseEvent) => {
+      if (isDialogueOpenRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      for (const item of npcEntities) {
+        const hits = raycaster.intersectObjects(item.group.children, true);
+        if (hits.length > 0 && hits[0].distance < 85) {
+          handleOpenNPCDialogue(item.npc);
+          return;
+        }
+      }
+    };
+
+    // Mouse drag for 360 camera orbit (smooth, normal orbit)
+    const handleMouseDown = (e: MouseEvent) => {
+      physicsRef.current.mouseDrag = true;
+      physicsRef.current.prevMouse = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!physicsRef.current.mouseDrag) return;
+      const dx = e.clientX - physicsRef.current.prevMouse.x;
+      const dy = e.clientY - physicsRef.current.prevMouse.y;
+      physicsRef.current.prevMouse = { x: e.clientX, y: e.clientY };
+
+      const sens = 0.0035;
+      if (physicsRef.current.isGrounded) {
+        physicsRef.current.camYaw += dx * sens;
+        physicsRef.current.camPitch = Math.max(
+          -0.25,
+          Math.min(0.7, physicsRef.current.camPitch + dy * sens)
+        );
+      } else {
+        physicsRef.current.orbitOffset.x += dx * sens;
+        physicsRef.current.orbitOffset.y = Math.max(
+          -0.65,
+          Math.min(0.65, physicsRef.current.orbitOffset.y + dy * sens)
+        );
+      }
+    };
+
+    const handleMouseUp = () => {
+      physicsRef.current.mouseDrag = false;
+    };
+
+    // Touch events for mobile/trackpad touch
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        physicsRef.current.mouseDrag = true;
+        physicsRef.current.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!physicsRef.current.mouseDrag || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - physicsRef.current.prevMouse.x;
+      const dy = e.touches[0].clientY - physicsRef.current.prevMouse.y;
+      physicsRef.current.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+      const sens = 0.004;
+      if (physicsRef.current.isGrounded) {
+        physicsRef.current.camYaw += dx * sens;
+        physicsRef.current.camPitch = Math.max(
+          -0.25,
+          Math.min(0.7, physicsRef.current.camPitch + dy * sens)
+        );
+      } else {
+        physicsRef.current.orbitOffset.x += dx * sens;
+        physicsRef.current.orbitOffset.y = Math.max(
+          -0.65,
+          Math.min(0.65, physicsRef.current.orbitOffset.y + dy * sens)
+        );
+      }
+    };
+
+    const handleTouchEnd = () => {
+      physicsRef.current.mouseDrag = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
+
+    // 10. Resize Observer
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+          renderer.setSize(width, height);
+          composer.setSize(width, height);
+          bloomPass.setSize(width, height);
+        }
+      }
+    });
+    resizeObserver.observe(container);
+
+    // 11. CAMERA PHYSICS & SWAY ANIMATION STATE
+    const camPhysics = {
+      pos: new THREE.Vector3(0, 38.8, -46.5),
+      lookAt: new THREE.Vector3(0, 37.8, -30),
+      roll: 0,
+      baseDist: 8.0,
+      baseHeight: 2.8,
+      swayTime: 0,
+    };
+    camera.position.copy(camPhysics.pos);
+    camera.lookAt(camPhysics.lookAt);
+
+    // 12. REAL TIME ANIMATION & FLIGHT LOOP
+    let animationFrameId: number;
+    let clock = new THREE.Clock();
+    let tickCount = 0;
+
+    const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+      const elapsed = clock.getElapsedTime();
+      tickCount++;
+
+      const p = physicsRef.current;
+      const keys = p.keys;
+
+      // Update Skybox shader time
+      if (envRefs.current.skyMat) {
+        envRefs.current.skyMat.uniforms.time.value = elapsed;
+      }
+
+      // --- Flight State & Flight Controls ---
+      const isBoosting = keys.Space;
+      const isDiving = keys.ShiftLeft || keys.ShiftRight;
+
+      if (p.isGrounded) {
+        setFlightState('PERCHED');
+        p.isGliding = false;
+
+        // Ground walking physics - responsive, standard 3rd-person controls
+        const isSprinting = keys.ShiftLeft || keys.ShiftRight;
+        const walkSpeed = isSprinting ? 14.0 : 8.5;
+
+        // Calculate movement vector relative to camera orientation!
+        // Camera looks along (sin(camYaw), 0, cos(camYaw)).
+        // Screen-right is (-cos(camYaw), 0, sin(camYaw)), screen-left is (cos(camYaw), 0, -sin(camYaw)).
+        const camForward = new THREE.Vector3(Math.sin(p.camYaw), 0, Math.cos(p.camYaw));
+        const camRight = new THREE.Vector3(-Math.cos(p.camYaw), 0, Math.sin(p.camYaw));
+
+        let moveVector = new THREE.Vector3(0, 0, 0);
+        if (keys.KeyW) moveVector.add(camForward);
+        if (keys.KeyS) moveVector.sub(camForward);
+        if (keys.KeyA) moveVector.sub(camRight); // A goes LEFT
+        if (keys.KeyD) moveVector.add(camRight); // D goes RIGHT
+
+        const isMoving = moveVector.lengthSq() > 0.001;
+        if (isMoving) {
+          moveVector.normalize();
+          p.pos.add(moveVector.clone().multiplyScalar(walkSpeed * delta));
+
+          // Smoothly rotate character model to face movement direction
+          const targetCharYaw = Math.atan2(moveVector.x, moveVector.z);
+          let diff = targetCharYaw - p.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          p.yaw += diff * Math.min(1.0, 14.0 * delta);
+        }
+
+        // Keep character firmly on island plateau surface while grounded
+        let onIsland = false;
+        islandConfigs.forEach((cfg) => {
+          const distXZ = new THREE.Vector2(p.pos.x - cfg.pos.x, p.pos.z - cfg.pos.z).length();
+          if (distXZ < cfg.radius * 1.08) {
+            onIsland = true;
+            p.pos.y = cfg.pos.y + 6; // plateau surface
+          }
+        });
+
+        // Walking off the island edge into the open sky naturally transitions to flight!
+        if (!onIsland && p.pos.y > 10) {
+          p.isGrounded = false;
+          p.vel.set(Math.sin(p.yaw) * 16, 2, Math.cos(p.yaw) * 16);
+          p.speed = 16;
+          p.pitch = 0.05;
+          soundSynth.playWingWhoosh();
+          transformAnimTime = 0.9;
+          setIsGroundedUI(false);
+          triggerTransformToastRef.current('Stepped into the Sky — Transformed to Celestial Bird');
+        }
+
+        // Deliberate takeoff with Space
+        if (keys.Space) {
+          p.isGrounded = false;
+          p.vel.set(Math.sin(p.yaw) * 18, 14, Math.cos(p.yaw) * 18);
+          p.speed = 20;
+          p.pitch = 0.15;
+          soundSynth.playSpeedBoost();
+          soundSynth.playWingWhoosh();
+          transformAnimTime = 0.9;
+          setIsGroundedUI(false);
+          triggerTransformToastRef.current('Spread Wings to the Sky — Transformed to Celestial Bird');
+        }
+
+        p.pitch = THREE.MathUtils.lerp(p.pitch, 0, 0.15);
+        p.roll = THREE.MathUtils.lerp(p.roll, 0, 0.15);
+        p.speed = THREE.MathUtils.lerp(p.speed, isMoving ? walkSpeed : 0, 0.2);
+      } else {
+        // Airborne Aerodynamics - Fly normally, smoothly, and responsively
+        if (isBoosting) {
+          setFlightState('BOOSTING');
+          p.boostMultiplier = THREE.MathUtils.lerp(p.boostMultiplier, 1.65, 0.1);
+          p.isGliding = false;
+        } else if (isDiving || p.pitch < -0.3) {
+          setFlightState('DIVING');
+          p.boostMultiplier = THREE.MathUtils.lerp(p.boostMultiplier, 1.45, 0.1);
+          p.isGliding = false;
+        } else if (Math.abs(p.pitch) < 0.12 && !keys.KeyW && !keys.KeyS) {
+          setFlightState('GLIDING');
+          p.boostMultiplier = THREE.MathUtils.lerp(p.boostMultiplier, 1.0, 0.1);
+          p.isGliding = true;
+        } else {
+          setFlightState('SOARING');
+          p.boostMultiplier = THREE.MathUtils.lerp(p.boostMultiplier, 1.0, 0.1);
+          p.isGliding = false;
+        }
+
+        // Steer left with A, right with D - smooth turning and natural banking
+        let turnRate = 0;
+        let rollTarget = 0;
+        if (keys.KeyA) {
+          turnRate = 1.65; // Turn LEFT
+          rollTarget = 0.38; // Bank left
+        } else if (keys.KeyD) {
+          turnRate = -1.65; // Turn RIGHT
+          rollTarget = -0.38; // Bank right
+        }
+        p.yaw += turnRate * delta;
+        p.roll = THREE.MathUtils.lerp(p.roll, rollTarget, 0.12);
+
+        // Pitch input: Normal flight (W dives down, S climbs up) with support for Invert Pitch toggle
+        const pitchDirection = invertPitchRef.current ? -1 : 1;
+        let pitchTarget = 0;
+        if (keys.KeyW) pitchTarget = -0.42 * pitchDirection;
+        else if (keys.KeyS) pitchTarget = 0.45 * pitchDirection;
+        else if (isDiving) pitchTarget = -0.45 * pitchDirection;
+        else pitchTarget = 0.0; // Auto-levels smoothly!
+
+        p.pitch = THREE.MathUtils.lerp(p.pitch, pitchTarget, 0.1);
+
+        // Forward Airspeed
+        let targetSpeed = 20 * p.boostMultiplier;
+        if (p.pitch < 0) {
+          targetSpeed += Math.abs(p.pitch) * 18; // Dive speed gain
+        } else if (p.pitch > 0) {
+          targetSpeed -= p.pitch * 8; // Climb speed reduction
+        }
+        p.speed = THREE.MathUtils.lerp(p.speed, Math.max(p.minSpeed, targetSpeed), 0.08);
+
+        // Forward flight vector from Pitch and Yaw
+        const forward = new THREE.Vector3(
+          Math.sin(p.yaw) * Math.cos(p.pitch),
+          Math.sin(p.pitch),
+          Math.cos(p.yaw) * Math.cos(p.pitch)
+        ).normalize();
+
+        p.vel.copy(forward.multiplyScalar(p.speed));
+        if (isBoosting) {
+          p.vel.y += 12.0; // Responsive wing thrust lift
+        }
+        p.pos.add(p.vel.clone().multiplyScalar(delta));
+
+        // Wing flapping speed & phase
+        p.wingFlapSpeed = isBoosting
+          ? 16.0
+          : isDiving
+          ? 8.0
+          : Math.max(5.5, 4.5 + (p.speed / p.maxSpeed) * 6.5);
+        p.flappingWingPhase += p.wingFlapSpeed * delta;
+
+        // Sound update
+        soundSynth.setFlightSpeed(p.speed / p.maxSpeed);
+
+        // Cloud ocean boundary floor
+        if (p.pos.y < -20) {
+          p.pos.y = -20;
+          p.vel.y = Math.max(0, p.vel.y);
+          p.pitch = 0.35;
+        }
+      }
+
+      // --- ANIMATE VISUAL AVATAR (AIRBORNE BIRD VS GROUNDED WAYFARER WITH VISIBLE GEAR) ---
+      birdRoot.position.copy(p.pos);
+
+      // Synchronize grounded state with UI and trigger transformation if needed
+      if (p.isGrounded && !wasGroundedRef.current) {
+        wasGroundedRef.current = true;
+        setIsGroundedUI(true);
+        transformAnimTime = 0.9;
+      } else if (!p.isGrounded && wasGroundedRef.current) {
+        wasGroundedRef.current = false;
+        setIsGroundedUI(false);
+        transformAnimTime = 0.9;
+        setIntroStep(3);
+      }
+
+      // Update Transformation Shockwave Visual Effect
+      if (transformAnimTime > 0) {
+        transformAnimTime -= delta * 1.6;
+        const progress = 1 - Math.max(0, transformAnimTime / 0.9);
+        transformAuraMesh.visible = true;
+        (transformAuraMesh.material as THREE.MeshBasicMaterial).opacity = (1 - progress) * 0.9;
+        const s = 1 + progress * 2.8;
+        transformAuraMesh.scale.set(s, s, s);
+      } else {
+        transformAuraMesh.visible = false;
+      }
+
+      // Switch 3D Appearance: Airborne Celestial Bird vs Grounded Character with Visible Gear
+      if (p.isGrounded) {
+        birdBody.visible = false;
+        humanoidBody.visible = true;
+
+        // Ground Humanoid Pose & Walking Dynamics
+        humanoidBody.rotation.set(0, p.yaw, 0);
+
+        // Track intro progress along the straight path
+        if (p.pos.z > -16 && p.pos.z < 25) {
+          setIntroStep((prev) => (prev < 2 ? 2 : prev));
+        }
+
+        const isWalking = (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD);
+        const isSprinting = (keys.ShiftLeft || keys.ShiftRight);
+
+        if (isWalking) {
+          const moveMultiplier = keys.KeyS && !keys.KeyW ? -1 : 1;
+          walkPhase += delta * (isSprinting ? 12.0 : 8.0) * moveMultiplier;
+          const legSwing = Math.sin(walkPhase) * 0.65;
+          charLeftLegGroup.rotation.x = legSwing;
+          charRightLegGroup.rotation.x = -legSwing;
+          charLeftArmGroup.rotation.x = -legSwing * 0.55;
+          charRightArmGroup.rotation.x = legSwing * 0.35;
+          charCloak.rotation.x = 0.22 + Math.abs(Math.sin(walkPhase * 2)) * 0.14;
+          charTorsoGroup.position.y = 1.8 + Math.abs(Math.sin(walkPhase * 2)) * 0.08;
+        } else {
+          idlePhase += delta * 2.2;
+          const idleBreath = Math.sin(idlePhase) * 0.04;
+          charTorsoGroup.position.y = 1.8 + idleBreath;
+          charLeftLegGroup.rotation.x = THREE.MathUtils.lerp(charLeftLegGroup.rotation.x, 0, 0.2);
+          charRightLegGroup.rotation.x = THREE.MathUtils.lerp(charRightLegGroup.rotation.x, 0, 0.2);
+          charLeftArmGroup.rotation.x = Math.sin(idlePhase) * 0.08;
+          charRightArmGroup.rotation.x = 0.15 + Math.sin(idlePhase * 1.2) * 0.06;
+          charCloak.rotation.x = 0.05 + Math.sin(idlePhase * 1.5) * 0.04;
+        }
+
+        // Floating Sacred Halo & Ground Lotus Aura animation
+        charHalo.rotation.z = elapsed * 1.5;
+        charGroundAura.rotation.z = -elapsed * 0.8;
+        charGroundAura.scale.set(
+          1 + Math.sin(elapsed * 3) * 0.06,
+          1 + Math.sin(elapsed * 3) * 0.06,
+          1
+        );
+        (charGroundAura.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(elapsed * 4) * 0.2;
+      } else {
+        birdBody.visible = true;
+        humanoidBody.visible = false;
+
+        // Bird naturally points forward along +Z in local space: -p.pitch tilts beak down/up, p.yaw steers heading, p.roll banks
+        birdBody.rotation.set(-p.pitch, p.yaw, p.roll, 'YXZ');
+
+        const flapSin = Math.sin(p.flappingWingPhase);
+        const flapCos = Math.cos(p.flappingWingPhase);
+
+        // Heart of light breathing pulse
+        const pulse = Math.sin(elapsed * 4) * 0.2 + 0.9;
+        heartMesh.scale.set(pulse, pulse, pulse);
+
+        // Crown halo rotation & shine
+        halo.rotation.z = elapsed * 1.6;
+
+        // Breast & keel aerodynamic breathing heave
+        breast.position.y = -0.1 + flapSin * 0.035;
+
+        // Head & neck subtle aerodynamic bob in sync with wing thrust
+        head.position.y = 0.82 + flapSin * 0.045;
+        head.position.z = 1.18 + flapCos * 0.035;
+        neck.position.y = 0.45 + flapSin * 0.025;
+
+        // Crest plumage fluttering in wind
+        crestGroup.children.forEach((plume, idx) => {
+          plume.rotation.x = -0.55 - idx * 0.18 + Math.sin(elapsed * 12 + idx) * 0.08 + (p.speed / 50) * 0.2;
+        });
+
+        // Tail Fan Animation: rudders on bank/yaw, spreads on climb, narrows on dive, undulates with flap
+        const tailFanSpread = isDiving ? 0.6 : p.pitch > 0.2 ? 1.4 : 1.0;
+        tailGroup.scale.x = THREE.MathUtils.lerp(tailGroup.scale.x, tailFanSpread, 0.1);
+        tailGroup.rotation.y = THREE.MathUtils.lerp(tailGroup.rotation.y, (keys.KeyA ? -0.3 : keys.KeyD ? 0.3 : 0), 0.12);
+        tailGroup.rotation.x = THREE.MathUtils.lerp(tailGroup.rotation.x, -p.pitch * 0.4 + flapSin * 0.12, 0.1);
+
+        // Perching Feet Animation: tucked back in flight, extended down on ground
+        const footAngle = p.isGrounded ? 0.2 : 0.85;
+        leftFoot.rotation.x = THREE.MathUtils.lerp(leftFoot.rotation.x, footAngle, 0.1);
+        rightFoot.rotation.x = THREE.MathUtils.lerp(rightFoot.rotation.x, footAngle, 0.1);
+
+        // Dynamic Wing Aerodynamic Articulation: CONTINUOUS FLAPPING AS IT FLIES
+        if (isDiving) {
+          // High-speed falcon dive: swept-back wings with rapid micro-fluttering
+          const diveFlutter = Math.sin(p.flappingWingPhase * 1.5) * 0.08;
+          leftWing.shoulderJoint.rotation.set(0.4 + diveFlutter * 0.2, 0.95, -0.2 + diveFlutter);
+          leftWing.midWingJoint.rotation.set(0, 0.3, -0.6);
+          rightWing.shoulderJoint.rotation.set(0.4 + diveFlutter * 0.2, -0.95, 0.2 - diveFlutter);
+          rightWing.midWingJoint.rotation.set(0, -0.3, 0.6);
+        } else {
+          // Dynamic flapping animations as it flies across all soaring / cruising / boosting states
+          const flapAmp = isBoosting ? 0.82 : 0.65;
+          const shoulderAngle = flapSin * flapAmp;
+          const elbowFlex = Math.sin(p.flappingWingPhase - 0.45) * (isBoosting ? 0.45 : 0.35);
+          const wingPitchTwist = -flapCos * 0.22; // Aerodynamic angle of attack twist
+
+          leftWing.shoulderJoint.rotation.set(wingPitchTwist, 0.08, shoulderAngle);
+          leftWing.midWingJoint.rotation.set(0, 0, elbowFlex);
+          leftWing.primaryFeathersGroup.rotation.z = Math.sin(p.flappingWingPhase - 0.7) * 0.24;
+
+          rightWing.shoulderJoint.rotation.set(wingPitchTwist, -0.08, -shoulderAngle);
+          rightWing.midWingJoint.rotation.set(0, 0, -elbowFlex);
+          rightWing.primaryFeathersGroup.rotation.z = -Math.sin(p.flappingWingPhase - 0.7) * 0.24;
+        }
+      }
+
+      // Starlight Ribbon Trails from Wingtips
+      const leftTipWorld = new THREE.Vector3(4.2, 0, -0.6)
+        .applyEuler(birdBody.rotation)
+        .add(p.pos);
+      const rightTipWorld = new THREE.Vector3(-4.2, 0, -0.6)
+        .applyEuler(birdBody.rotation)
+        .add(p.pos);
+
+      const lPosArr = leftTrail.geo.attributes.position.array as Float32Array;
+      lPosArr[leftTrail.headIdx * 3] = leftTipWorld.x;
+      lPosArr[leftTrail.headIdx * 3 + 1] = leftTipWorld.y;
+      lPosArr[leftTrail.headIdx * 3 + 2] = leftTipWorld.z;
+      leftTrail.headIdx = (leftTrail.headIdx + 1) % trailCount;
+      leftTrail.geo.attributes.position.needsUpdate = true;
+
+      const rPosArr = rightTrail.geo.attributes.position.array as Float32Array;
+      rPosArr[rightTrail.headIdx * 3] = rightTipWorld.x;
+      rPosArr[rightTrail.headIdx * 3 + 1] = rightTipWorld.y;
+      rPosArr[rightTrail.headIdx * 3 + 2] = rightTipWorld.z;
+      rightTrail.headIdx = (rightTrail.headIdx + 1) % trailCount;
+      rightTrail.geo.attributes.position.needsUpdate = true;
+
+      // Celestial motes gentle drift
+      const motesArr = moteGeo.attributes.position.array as Float32Array;
+      for (let i = 0; i < moteCount; i++) {
+        motesArr[i * 3 + 1] -= delta * 3.0;
+        if (motesArr[i * 3 + 1] < p.pos.y - 40) {
+          motesArr[i * 3 + 1] = p.pos.y + 40;
+        }
+      }
+      moteGeo.attributes.position.needsUpdate = true;
+
+      // Rotate island astrolabes & beacons
+      scene.traverse((obj) => {
+        if (obj.name === 'astrolabeRing') {
+          obj.rotation.y += 0.01;
+          obj.rotation.x += 0.005;
+        }
+      });
+      islandBeaconRays.forEach((ray, i) => {
+        (ray.material as THREE.MeshBasicMaterial).opacity =
+          0.25 + Math.sin(elapsed * 2 + i) * 0.15;
+      });
+
+      // Essence Rings Collection Check
+      essenceRings.forEach((ring) => {
+        if (!ring.collected && ring.pos.distanceTo(p.pos) < 14) {
+          ring.collected = true;
+          ring.mesh.visible = false;
+          soundSynth.playChime(784);
+          soundSynth.playSpeedBoost();
+          p.speed = Math.min(p.maxSpeed, p.speed + 12);
+          setCollectedEssence((prev) => prev + 1);
+          if (onAwardXP) onAwardXP(25);
+        }
+      });
+
+      // Island Landing & Sanctuary Proximity Check
+      let activeIsland: HabitIsland | null = null;
+      let activeSanctuary: WorldArea | null = null;
+
+      islandConfigs.forEach((cfg) => {
+        const distXZ = new THREE.Vector2(p.pos.x - cfg.pos.x, p.pos.z - cfg.pos.z).length();
+        if (distXZ < cfg.radius * 1.4) {
+          activeIsland = cfg.island;
+
+          const plateauHeight = cfg.pos.y + 6;
+          if (distXZ < cfg.radius && Math.abs(p.pos.y - plateauHeight) < 8 && !keys.Space) {
+            if (!p.isGrounded && p.vel.y <= 0) {
+              p.isGrounded = true;
+              p.pos.y = plateauHeight;
+              p.vel.set(0, 0, 0);
+              soundSynth.playChime(660);
+              soundSynth.playItemObtain();
+              transformAnimTime = 0.9;
+              setIsGroundedUI(true);
+              triggerTransformToastRef.current(`Landed at ${cfg.island.name} — Transformed to Wayfarer [Press G for Gear]`);
+            }
+          }
+
+          if (distXZ < cfg.radius * 0.6) {
+            activeSanctuary = cfg.island.areas[0] || null;
+          }
+        }
+      });
+
+      // Island Talkable NPC Animation & Proximity Detection
+      let closestNPC: IslandNPC | null = null;
+      let minNpcDist = 999999;
+
+      npcEntities.forEach((entity, idx) => {
+        // Subtle spiritual floating & breathing
+        entity.group.position.y = entity.worldPos.y + Math.sin(elapsed * 2.2 + idx) * 0.12;
+
+        // Relic spinning and vertical hover
+        entity.relicMesh.rotation.y += delta * 1.5;
+        entity.relicMesh.position.y = 1.7 + Math.sin(elapsed * 3.0 + idx) * 0.14;
+
+        // Beacon Rune rotation and slight tilt
+        entity.beaconRune.rotation.y += delta * 2.2;
+        entity.beaconRune.rotation.x = Math.sin(elapsed * 1.8 + idx) * 0.18;
+        entity.halo.rotation.z = elapsed * 1.4;
+
+        // Distance check to player bird
+        const dist = p.pos.distanceTo(entity.worldPos);
+        if (dist < minNpcDist) {
+          minNpcDist = dist;
+          if (dist < 36) {
+            closestNPC = entity.npc;
+          }
+        }
+      });
+
+      setNearNPC(closestNPC);
+      nearNPCRef.current = closestNPC;
+
+      setCurrentIsland(activeIsland);
+      setNearSanctuary(activeSanctuary);
+      setNearSanctuaryIsland(activeSanctuary ? activeIsland : null);
+
+      // --- SMOOTH THIRD-PERSON CAMERA WITH GROUND VS FLIGHT PROFILES ---
+      if (p.isGrounded) {
+        // Ground 3rd-person camera: positions cleanly behind player relative to camYaw & camPitch
+        const groundCamDist = cameraMode === 'cinematic' ? 14.0 : cameraMode === 'firstPerson' ? 0.3 : 7.2;
+        const groundCamHeight = cameraMode === 'firstPerson' ? 1.6 : 2.2;
+        const targetCamPos = new THREE.Vector3(
+          p.pos.x - Math.sin(p.camYaw) * Math.cos(p.camPitch) * groundCamDist,
+          p.pos.y + groundCamHeight + Math.sin(p.camPitch) * groundCamDist * 0.6,
+          p.pos.z - Math.cos(p.camYaw) * Math.cos(p.camPitch) * groundCamDist
+        );
+
+        camPhysics.pos.lerp(targetCamPos, 1.0 - Math.exp(-12.0 * delta));
+        camera.position.copy(camPhysics.pos);
+
+        const lookTarget = p.pos.clone().add(new THREE.Vector3(0, 1.6, 0));
+        camPhysics.lookAt.lerp(lookTarget, 1.0 - Math.exp(-14.0 * delta));
+        camera.lookAt(camPhysics.lookAt);
+        camera.up.set(0, 1, 0);
+      } else {
+        // Flight camera: tracks smoothly behind the bird's flight heading with smooth look-ahead
+        const speedOffset = (p.speed / p.maxSpeed) * 3.5;
+        const totalCamDist = (cameraMode === 'cinematic' ? 24.0 : cameraMode === 'firstPerson' ? 0.3 : 9.5) + speedOffset;
+        const baseHeight = cameraMode === 'cinematic' ? 6.0 : cameraMode === 'firstPerson' ? 0.8 : 2.5;
+
+        const effectiveYaw = p.yaw + p.orbitOffset.x;
+        const effectivePitch = p.pitch * 0.35 + p.orbitOffset.y;
+
+        const targetCamPos = new THREE.Vector3(
+          p.pos.x - Math.sin(effectiveYaw) * Math.cos(effectivePitch) * totalCamDist,
+          p.pos.y + baseHeight + Math.sin(effectivePitch) * totalCamDist * 0.5,
+          p.pos.z - Math.cos(effectiveYaw) * Math.cos(effectivePitch) * totalCamDist
+        );
+
+        camPhysics.pos.lerp(targetCamPos, 1.0 - Math.exp(-9.0 * delta));
+        camera.position.copy(camPhysics.pos);
+
+        // Gentle camera roll matching flight bank
+        const targetRoll = p.roll * 0.25;
+        camPhysics.roll = THREE.MathUtils.lerp(camPhysics.roll, targetRoll, 0.08);
+        camera.up.set(Math.sin(-camPhysics.roll), Math.cos(camPhysics.roll), 0);
+
+        // Look-ahead target along flight path
+        const lookAheadDist = cameraMode === 'firstPerson' ? 8.0 : 4.5;
+        const forwardDir = new THREE.Vector3(
+          Math.sin(p.yaw),
+          Math.sin(p.pitch) * 0.6,
+          Math.cos(p.yaw)
+        ).normalize();
+
+        const targetLookAt = p.pos.clone()
+          .add(new THREE.Vector3(0, 1.0, 0))
+          .add(forwardDir.multiplyScalar(lookAheadDist));
+
+        camPhysics.lookAt.lerp(targetLookAt, 1.0 - Math.exp(-10.0 * delta));
+        camera.lookAt(camPhysics.lookAt);
+      }
+
+      // Dynamic FOV based on speed (smooth zoom effect)
+      const targetFOV = 60 + (p.speed / p.maxSpeed) * 14;
+      camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.06);
+      camera.updateProjectionMatrix();
+
+      // --- GRAPHICAL ENHANCEMENTS IN RENDER LOOP ---
+      // Speedlines wind streak visibility
+      if (!p.isGrounded && (p.speed > 22 || isBoosting)) {
+        speedlineMesh.visible = true;
+        speedlineMesh.position.copy(p.pos);
+        speedlineMesh.rotation.set(-p.pitch, p.yaw, 0, 'YXZ');
+        const targetOpacity = Math.min(0.65, (p.speed - 20) / 25 + (isBoosting ? 0.25 : 0));
+        speedlineMat.opacity = THREE.MathUtils.lerp(speedlineMat.opacity, targetOpacity, 0.1);
+      } else {
+        speedlineMesh.visible = false;
+        speedlineMat.opacity = 0;
+      }
+
+      // Contact Drop Shadow on surface
+      if (p.isGrounded) {
+        contactShadow.visible = true;
+        contactShadow.position.set(p.pos.x, p.pos.y - 0.03, p.pos.z);
+      } else {
+        contactShadow.visible = false;
+      }
+
+      // Animated Cloud Sea Breathing
+      if (envRefs.current.cloudSeaMat) {
+        envRefs.current.cloudSeaMat.emissiveIntensity = 0.35 + Math.sin(elapsed * 0.8) * 0.12;
+      }
+
+      // --- DYNAMIC DEPTH OF FIELD CONTINUOUS FOCUS TRACKING ---
+      if (isDofEnabledRef.current && bokehPass) {
+        // Dynamically lock focus distance to the exact distance between camera and avatar
+        const distToAvatar = camera.position.distanceTo(p.pos);
+        bokehPass.uniforms['focus'].value = distToAvatar;
+        bokehPass.enabled = true;
+      } else if (bokehPass) {
+        bokehPass.enabled = false;
+      }
+
+      // Update HUD stats once every 4 frames
+      if (tickCount % 4 === 0) {
+        setSpeedKnots(Math.round(p.speed * 1.8));
+        setAltitudeMeters(Math.round(Math.max(0, p.pos.y * 3.2)));
+        const deg = Math.round(((-p.yaw * 180) / Math.PI) % 360);
+        setHeadingDegrees(deg < 0 ? deg + 360 : deg);
+      }
+
+      // Render with post-processing (Bloom + Depth of Field) if either is active
+      if (bloomPassRef.current) {
+        bloomPassRef.current.enabled = bloomEnabledRef.current;
+      }
+      if (isDofEnabledRef.current || bloomEnabledRef.current) {
+        composer.render();
+      } else {
+        renderer.render(scene, camera);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    // Cleanup
+    return () => {
+      if (typewriterTimerRef.current) {
+        clearInterval(typewriterTimerRef.current);
+        typewriterTimerRef.current = null;
+      }
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      canvas.removeEventListener('click', handleCanvasClick);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      resizeObserver.disconnect();
+      renderer.dispose();
+    };
+  }, [islandConfigs, cameraMode, handleEnterNearestSanctuary, onAwardXP, timeOfDayPalettes]);
+
+  // Adjust Sky Colors when TimeOfDay changes
+  useEffect(() => {
+    const palette = timeOfDayPalettes[timeOfDay];
+    if (!palette || !envRefs.current.skyMat) return;
+
+    const skyMat = envRefs.current.skyMat;
+    skyMat.uniforms.topColor.value.copy(palette.skyTop);
+    skyMat.uniforms.bottomColor.value.copy(palette.skyBottom);
+    skyMat.uniforms.horizonColor.value.copy(palette.skyHorizon);
+    skyMat.uniforms.sunPosition.value.copy(palette.sunPos);
+
+    if (envRefs.current.sunGroup) {
+      envRefs.current.sunGroup.position.copy(palette.sunPos).multiplyScalar(1000);
+    }
+    if (envRefs.current.sunMeshMat) {
+      envRefs.current.sunMeshMat.color.copy(palette.sunColor);
+    }
+    if (envRefs.current.sunAuraMat) {
+      envRefs.current.sunAuraMat.color.setHex(palette.sunAuraColor);
+    }
+    if (envRefs.current.dirLight) {
+      envRefs.current.dirLight.color.copy(palette.dirColor);
+      envRefs.current.dirLight.intensity = palette.dirIntensity;
+      envRefs.current.dirLight.position.copy(palette.sunPos).multiplyScalar(1000);
+    }
+    if (envRefs.current.ambientLight) {
+      envRefs.current.ambientLight.color.copy(palette.ambientColor);
+      envRefs.current.ambientLight.intensity = palette.ambientIntensity;
+    }
+    if (envRefs.current.cloudSeaMat) {
+      envRefs.current.cloudSeaMat.color.setHex(palette.cloudSeaColor);
+    }
+    if (envRefs.current.scene && envRefs.current.scene.fog) {
+      (envRefs.current.scene.fog as THREE.FogExp2).color.copy(palette.fogColor);
+    }
+  }, [timeOfDay, timeOfDayPalettes]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative w-full overflow-hidden rounded-2xl border border-[#262e36] bg-[#090d12] select-none shadow-[0_8px_32px_rgba(0,0,0,0.5)] ${
+        isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'h-[640px] sm:h-[720px]'
+      }`}
+    >
+      {/* 3D WebGL Canvas */}
+      <canvas ref={canvasRef} className="w-full h-full block cursor-grab active:cursor-grabbing" />
+
+      {/* --- HUD TOP HEADER BAR --- */}
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
+        {/* Left: Heading Compass & Current Island Banner */}
+        <div className="flex items-center gap-3">
+          <div className="pointer-events-auto px-3.5 py-2 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] flex items-center gap-2.5 text-xs text-[#f5efe3] shadow-lg">
+            <Compass className="w-4 h-4 text-[#c5a059]" />
+            <span className="font-mono font-bold text-[#c5a059]">{headingDegrees}°</span>
+            <span className="text-[#64748b]">|</span>
+            <div className="flex items-center gap-1.5 font-semibold truncate max-w-[200px]">
+              <Feather className="w-3.5 h-3.5 text-sky-400" />
+              <span>{currentIsland ? currentIsland.name : 'Open Skies • White Bird Soaring'}</span>
+            </div>
+          </div>
+
+          {/* Starlight Essence Collected */}
+          <div className="pointer-events-auto px-3 py-2 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold shadow-lg">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{collectedEssence} Essences</span>
+          </div>
+        </div>
+
+        {/* Right: Quick Controls & Camera Modes */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Time of Day Switcher */}
+          <div className="hidden sm:flex items-center bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] rounded-xl p-1 text-[11px]">
+            {(['dawn', 'midday', 'golden_hour', 'twilight', 'starlight'] as TimeOfDay[]).map((tod) => (
+              <button
+                key={tod}
+                onClick={() => onTimeOfDayChange(tod)}
+                className={`px-2.5 py-1 rounded-lg capitalize transition-all cursor-pointer ${
+                  timeOfDay === tod
+                    ? 'bg-[#c5a059] text-[#0c0e10] font-bold shadow-sm'
+                    : 'text-[#94a3b8] hover:text-[#f8fafc]'
+                }`}
+              >
+                {tod.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          {/* Celestial Bloom Toggle */}
+          <button
+            onClick={() => setBloomEnabled(!bloomEnabled)}
+            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
+              bloomEnabled
+                ? 'bg-[#231b2e]/90 border-amber-400/60 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                : 'bg-[#11161d]/85 border-[#27323f] text-[#94a3b8] hover:text-[#f5efe3]'
+            }`}
+            title="Toggle Celestial Bloom & Atmospheric Glow"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span className="hidden lg:inline text-[11px] font-semibold">Bloom {bloomEnabled ? 'On' : 'Off'}</span>
+          </button>
+
+          {/* Depth of Field (DOF Bokeh) Toggle */}
+          <button
+            onClick={() => setIsDofEnabled(!isDofEnabled)}
+            className={`p-2.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs ${
+              isDofEnabled
+                ? 'bg-[#1b2738]/90 border-sky-500/50 text-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.25)]'
+                : 'bg-[#11161d]/85 border-[#27323f] text-[#94a3b8] hover:text-[#f5efe3]'
+            }`}
+            title="Toggle Cinematic Depth of Field Bokeh"
+          >
+            <Focus className="w-4 h-4 text-sky-400" />
+            <span className="hidden lg:inline text-[11px] font-semibold">DOF {isDofEnabled ? 'On' : 'Off'}</span>
+          </button>
+
+          {/* Flight Pitch Direction Toggle */}
+          <button
+            onClick={() => setInvertPitch(!invertPitch)}
+            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#c5a059] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
+            title={`Flight Pitch: ${invertPitch ? 'Inverted (W: Climb, S: Dive)' : 'Standard (W: Dive, S: Climb)'}. Click to switch.`}
+          >
+            <Wind className="w-4 h-4 text-amber-300" />
+            <span className="hidden xl:inline text-[11px]">
+              Pitch: <strong className="text-white font-semibold">{invertPitch ? 'Inverted' : 'Standard'}</strong>
+            </span>
+          </button>
+
+          {/* Camera View Switcher */}
+          <button
+            onClick={() =>
+              setCameraMode((prev) =>
+                prev === 'chase' ? 'cinematic' : prev === 'cinematic' ? 'firstPerson' : 'chase'
+              )
+            }
+            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-[#38bdf8] transition-all cursor-pointer shadow-lg flex items-center gap-1.5 text-xs"
+            title="Switch 3rd Person View (Press C)"
+          >
+            <Eye className="w-4 h-4 text-[#38bdf8]" />
+            <span className="capitalize hidden md:inline">{cameraMode}</span>
+          </button>
+
+          {/* Character & Gear Panel Toggle */}
+          <button
+            onClick={() => setIsGearPanelOpen(!isGearPanelOpen)}
+            className={`px-3 py-2 rounded-xl backdrop-blur-md border transition-all cursor-pointer shadow-lg flex items-center gap-2 text-xs font-semibold ${
+              isGearPanelOpen
+                ? 'bg-amber-400 text-[#0c0e10] border-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                : isGroundedUI
+                ? 'bg-amber-950/80 border-amber-500/80 text-amber-200 animate-pulse'
+                : 'bg-[#11161d]/85 border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] hover:border-amber-400/50'
+            }`}
+            title="Character Gear & Stats (Press G)"
+          >
+            <Shield className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Gear [G]</span>
+            {isGroundedUI && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-500/30 text-amber-300 font-mono">
+                Landed
+              </span>
+            )}
+          </button>
+
+          {/* Sound Mute Toggle */}
+          <button
+            onClick={() => {
+              const muted = soundSynth.toggleMute();
+              setIsMuted(muted);
+            }}
+            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] transition-all cursor-pointer shadow-lg"
+            title="Toggle Flight Sound (Press M)"
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+          </button>
+
+          {/* Help Controls Modal */}
+          <button
+            onClick={() => setShowHelp(true)}
+            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] transition-all cursor-pointer shadow-lg"
+            title="Controls & Flight Physics Guide"
+          >
+            <HelpCircle className="w-4 h-4 text-[#c5a059]" />
+          </button>
+
+          {/* Fullscreen Toggle */}
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] transition-all cursor-pointer shadow-lg"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* --- STRAIGHT PATH INTRODUCTION GUIDE BANNER --- */}
+      {showIntroGuide && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4 pointer-events-none">
+          <div className="pointer-events-auto bg-[#0d121a]/95 backdrop-blur-xl border border-amber-400/40 rounded-2xl p-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs text-[#f1f5f9]">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#232f3e]">
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-amber-300 text-sm">The Straight Path • Introduction</span>
+              </div>
+              <button
+                onClick={() => setShowIntroGuide(false)}
+                className="text-[#94a3b8] hover:text-white p-1 rounded-md hover:bg-white/10 transition-all cursor-pointer text-xs"
+                title="Dismiss Guide"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[#94a3b8] mb-2 text-[11px] leading-relaxed">
+              Welcome, Wayfarer. You begin in your spiritual humanoid form. Walk the straight path to explore:
+            </p>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div
+                className={`p-2 rounded-xl border transition-all ${
+                  introStep === 1
+                    ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-sm'
+                    : introStep > 1
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
+                }`}
+              >
+                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
+                  <span>1. Walk Ahead</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">
+                  Press <strong className="text-white">W</strong> or <strong className="text-white">↑</strong> along pavers
+                </div>
+              </div>
+
+              <div
+                className={`p-2 rounded-xl border transition-all ${
+                  introStep === 2
+                    ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-sm animate-pulse'
+                    : introStep > 2
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
+                }`}
+              >
+                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
+                  <span>2. Sage Elyon</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">
+                  Meet at Sundial & press <strong className="text-white">E</strong>
+                </div>
+              </div>
+
+              <div
+                className={`p-2 rounded-xl border transition-all ${
+                  introStep === 3
+                    ? 'bg-sky-500/20 border-sky-400/60 text-sky-200 shadow-sm'
+                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
+                }`}
+              >
+                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
+                  <span>3. Take Flight</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">
+                  Walk off edge or press <strong className="text-white">Space</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- TRANSFORMATION TOAST BANNER --- */}
+      {transformToast && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="px-5 py-2.5 rounded-2xl bg-[#0c1015]/95 backdrop-blur-xl border border-amber-400/60 shadow-[0_0_35px_rgba(245,158,11,0.4)] flex items-center gap-3 text-xs sm:text-sm text-[#f8fafc]">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+            <span className="font-semibold">{transformToast}</span>
+          </div>
+        </div>
+      )}
+
+      {/* --- HUD BOTTOM FLIGHT & GROUND INSTRUMENTS --- */}
+      <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between pointer-events-none z-10">
+        {/* Left: Exploration / Flight Profile */}
+        <div className="pointer-events-auto flex items-center gap-3">
+          {isGroundedUI ? (
+            /* Ground Exploration HUD */
+            <div className="px-4 py-3 rounded-2xl bg-[#0f141a]/95 backdrop-blur-md border border-amber-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <Compass className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-amber-200">The Straight Path</span>
+                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-500/20 text-amber-300 font-mono">
+                    Ground Sanctuary
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#94a3b8] mt-0.5 flex items-center gap-2">
+                  <span>
+                    <strong className="text-white">W / A / S / D</strong> Walk
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <strong className="text-white">Mouse Drag</strong> Look
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <strong className="text-white">Shift</strong> Sprint
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <strong className="text-white">Space</strong> Take Flight
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Flight Aviation HUD */
+            <>
+              {/* Speedometer */}
+              <div className="px-4 py-3 rounded-2xl bg-[#0f141a]/90 backdrop-blur-md border border-[#232b36] shadow-[0_4px_20px_rgba(0,0,0,0.4)] flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#1b232e] text-[#38bdf8]">
+                  <Wind className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[#64748b] font-semibold block">
+                    Airspeed
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-mono text-xl font-bold text-[#f8fafc]">{speedKnots}</span>
+                    <span className="text-[10px] text-[#94a3b8] font-mono">knots</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Altitude Meter */}
+              <div className="px-4 py-3 rounded-2xl bg-[#0f141a]/90 backdrop-blur-md border border-[#232b36] shadow-[0_4px_20px_rgba(0,0,0,0.4)] flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#1b232e] text-[#f59e0b]">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-[#64748b] font-semibold block">
+                    Altitude
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-mono text-xl font-bold text-[#f8fafc]">{altitudeMeters}</span>
+                    <span className="text-[10px] text-[#94a3b8] font-mono">m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Flight State Indicator */}
+              <div className="hidden sm:flex px-3.5 py-2.5 rounded-xl bg-[#0f141a]/90 backdrop-blur-md border border-[#232b36] items-center gap-2 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-mono text-[#cbd5e1] font-semibold">{flightState}</span>
+              </div>
+            </>
+          )}
+
+          {/* Quick Takeoff button when grounded */}
+          {isGroundedUI ? (
+            <button
+              onClick={() => {
+                physicsRef.current.isGrounded = false;
+                physicsRef.current.pos.y += 12;
+                physicsRef.current.speed = 20;
+                physicsRef.current.pitch = 0.15;
+                soundSynth.playSpeedBoost();
+                soundSynth.playWingWhoosh();
+                setIsGroundedUI(false);
+                triggerTransformToast('Spread Wings to the Sky — Transformed to Celestial Bird');
+              }}
+              className="px-4 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs shadow-[0_0_25px_rgba(56,189,248,0.4)] flex items-center gap-2 transition-all cursor-pointer border border-sky-300/40 active:scale-95"
+            >
+              <Feather className="w-4 h-4" />
+              <span>Take Flight [Space]</span>
+            </button>
+          ) : (
+            /* Quick Land button when flying */
+            <button
+              onClick={() => {
+                physicsRef.current.isGrounded = true;
+                physicsRef.current.vel.set(0, 0, 0);
+                soundSynth.playChime(660);
+                soundSynth.playItemObtain();
+                setIsGroundedUI(true);
+                triggerTransformToast('Landed — Transformed to Wayfarer [Press G for Gear]');
+              }}
+              className="px-4 py-3 rounded-2xl bg-[#0f141a]/90 hover:bg-[#1a2332] text-amber-300 font-bold text-xs shadow-lg flex items-center gap-2 transition-all cursor-pointer border border-amber-500/40 active:scale-95"
+            >
+              <MapPin className="w-4 h-4 text-amber-400" />
+              <span>Land Here [F]</span>
+            </button>
+          )}
+        </div>
+
+        {/* Center Prompt: Land & Enter Sanctuary OR Speak with Island NPC */}
+        {nearNPC ? (
+          <div className="pointer-events-auto flex flex-col items-center gap-2 animate-bounce">
+            <button
+              onClick={() => handleOpenNPCDialogue(nearNPC)}
+              className="px-6 py-3.5 rounded-2xl text-[#0c0e10] font-bold text-sm shadow-[0_0_35px_rgba(245,158,11,0.6)] flex items-center gap-2.5 transition-all transform active:scale-95 cursor-pointer border border-amber-200/60"
+              style={{
+                background: `linear-gradient(135deg, ${nearNPC.accentHex}, #fef08a)`,
+              }}
+            >
+              <MessageSquare className="w-4 h-4 text-[#0c0e10]" />
+              <span>[E / T] Talk to {nearNPC.name}</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="text-[11px] text-amber-100 bg-black/75 px-3 py-1 rounded-full backdrop-blur-sm border border-amber-400/40">
+              Press E, T, or Click to hear {nearNPC.title}
+            </span>
+          </div>
+        ) : nearSanctuary ? (
+          <div className="pointer-events-auto flex flex-col items-center gap-2 animate-bounce">
+            <button
+              onClick={handleEnterNearestSanctuary}
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#c5a059] to-[#e2bb6f] hover:from-[#d8b268] hover:to-[#ebd089] text-[#0c0e10] font-bold text-sm shadow-[0_0_30px_rgba(197,160,89,0.6)] flex items-center gap-2.5 transition-all transform active:scale-95 cursor-pointer border border-amber-200/50"
+            >
+              <MapPin className="w-4 h-4 text-[#0c0e10]" />
+              <span>[E] Land & Enter {nearSanctuary.name}</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="text-[11px] text-amber-200 bg-black/60 px-3 py-1 rounded-full backdrop-blur-sm border border-amber-500/30">
+              Press E or Click to open Habit Sanctuary
+            </span>
+          </div>
+        ) : null}
+
+        {/* Right: Autopilot Fast Travel Drawer */}
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          <div className="px-3.5 py-2.5 rounded-2xl bg-[#0f141a]/90 backdrop-blur-md border border-[#232b36] text-right">
+            <span className="text-[10px] uppercase tracking-wider text-[#94a3b8] font-semibold block mb-1.5">
+              Fly Directly To Island:
+            </span>
+            <div className="flex flex-wrap justify-end gap-1.5 max-w-[280px]">
+              {HABIT_ISLANDS.map((island) => (
+                <button
+                  key={island.id}
+                  onClick={() => handleFastSoarToIsland(island)}
+                  className="px-2.5 py-1 rounded-lg bg-[#1a212b] hover:bg-[#25303d] border border-[#2d3a49] text-[11px] text-[#f1f5f9] transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: island.accentHex }}
+                  />
+                  <span>{island.name.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subtle Crosshair for flight orientation */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+        <Crosshair className="w-6 h-6 text-[#f8fafc]" />
+      </div>
+
+      {/* --- POKEMON-STYLE ISLAND NPC DIALOGUE BOX --- */}
+      {isDialogueOpen && dialogueNPC && (
+        <div className="absolute inset-x-0 bottom-6 px-4 sm:px-8 md:px-16 pointer-events-none z-50 flex justify-center animate-in fade-in slide-in-from-bottom-6 duration-200">
+          <div
+            id="pokemon-npc-dialogue-box"
+            onClick={handleAdvanceDialogue}
+            className="pointer-events-auto relative w-full max-w-3xl rounded-2xl sm:rounded-3xl border-2 bg-[#0c1117]/95 backdrop-blur-xl p-5 sm:p-6 shadow-[0_12px_45px_rgba(0,0,0,0.85)] cursor-pointer select-none transition-all hover:border-amber-400/80 group"
+            style={{
+              borderColor: `${dialogueNPC.accentHex}88`,
+              boxShadow: `0 0 35px ${dialogueNPC.accentHex}25, 0 16px 40px rgba(0,0,0,0.9)`,
+            }}
+          >
+            {/* NPC Speaker Plate Tag (Top-left Overlap) */}
+            <div
+              className="absolute -top-5 left-6 px-3.5 py-1.5 rounded-xl border flex items-center gap-2 shadow-lg backdrop-blur-md"
+              style={{
+                backgroundColor: '#111722',
+                borderColor: dialogueNPC.accentHex,
+                boxShadow: `0 0 15px ${dialogueNPC.accentHex}40`,
+              }}
+            >
+              <span className="text-base sm:text-lg">{dialogueNPC.avatarEmoji}</span>
+              <span className="font-serif-title font-bold text-xs sm:text-sm text-[#f5efe3]">
+                {dialogueNPC.name}
+              </span>
+              <span className="text-[#64748b] text-xs">•</span>
+              <span
+                className="text-[10px] sm:text-[11px] font-semibold tracking-wide uppercase"
+                style={{ color: dialogueNPC.accentHex }}
+              >
+                {dialogueNPC.title}
+              </span>
+            </div>
+
+            {/* Top-Right: Quick Actions (Replay, Scriptorium Guide, Close) */}
+            <div
+              className="absolute -top-4 right-6 flex items-center gap-1.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {dialogueLineIndex > 0 && (
+                <button
+                  onClick={handleRestartDialogue}
+                  className="px-2.5 py-1 rounded-lg bg-[#141b24] hover:bg-[#1f2a38] text-[11px] text-[#94a3b8] hover:text-[#f8fafc] border border-[#2a3749] transition-all cursor-pointer flex items-center gap-1 shadow"
+                  title="Replay dialogue from start"
+                >
+                  <RotateCcw className="w-3 h-3 text-[#c5a059]" />
+                  <span className="hidden sm:inline">Restart</span>
+                </button>
+              )}
+              {onOpenGuideTab && (
+                <button
+                  onClick={() => {
+                    handleCloseDialogue();
+                    onOpenGuideTab();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#141b24] hover:bg-[#1f2a38] text-[11px] text-[#94a3b8] hover:text-[#f8fafc] border border-[#2a3749] transition-all cursor-pointer flex items-center gap-1 shadow"
+                  title="Open Scriptorium Guide"
+                >
+                  <BookOpen className="w-3 h-3 text-[#c5a059]" />
+                  <span className="hidden sm:inline">Scriptorium</span>
+                </button>
+              )}
+              <button
+                onClick={handleCloseDialogue}
+                className="p-1 sm:px-2 sm:py-1 rounded-lg bg-[#141b24] hover:bg-[#1f2a38] text-[11px] text-[#94a3b8] hover:text-[#f8fafc] border border-[#2a3749] transition-all cursor-pointer flex items-center gap-1 shadow"
+                title="Close dialogue (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[10px]">Esc</span>
+              </button>
+            </div>
+
+            {/* Dialogue Text Content Area */}
+            <div className="pt-2 sm:pt-3 pb-3 min-h-[72px] sm:min-h-[82px] flex items-center">
+              <p className="font-serif-title text-sm sm:text-base md:text-lg text-[#f1f5f9] leading-relaxed tracking-wide">
+                {displayedText}
+                {isTyping && (
+                  <span className="inline-block w-2 h-4 sm:h-5 ml-1 bg-amber-400 animate-pulse align-middle" />
+                )}
+              </p>
+            </div>
+
+            {/* Footer Bar: Dialogue Progress, Key Hints & Classic Pokemon Bouncing Arrow */}
+            <div className="pt-2 border-t border-[#1e2836] flex items-center justify-between text-xs text-[#94a3b8]">
+              {/* Line indicator dots */}
+              <div className="flex items-center gap-1.5">
+                {dialogueNPC.dialogueLines.map((_, idx) => (
+                  <span
+                    key={idx}
+                    className={`h-1.5 rounded-full transition-all ${
+                      idx === dialogueLineIndex
+                        ? 'w-5 bg-amber-400'
+                        : idx < dialogueLineIndex
+                        ? 'w-2.5 bg-amber-600/70'
+                        : 'w-1.5 bg-[#2a3749]'
+                    }`}
+                  />
+                ))}
+                <span className="text-[11px] text-[#64748b] ml-1 font-mono">
+                  {dialogueLineIndex + 1}/{dialogueNPC.dialogueLines.length}
+                </span>
+              </div>
+
+              {/* Right Side: Key Hint & Bouncing Next Arrow */}
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-[#94a3b8] hidden sm:inline">
+                  {isTyping
+                    ? 'Click to skip typing'
+                    : dialogueLineIndex < dialogueNPC.dialogueLines.length - 1
+                    ? 'Click or [Space / Enter / E] to advance'
+                    : 'Click or [Space / Enter / E] to finish'}
+                </span>
+
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold text-xs shadow">
+                  <span>
+                    {dialogueLineIndex < dialogueNPC.dialogueLines.length - 1 ? 'Next' : 'Done'}
+                  </span>
+                  {/* Classic Pokemon-style bouncing dialogue arrow indicator */}
+                  <span className="inline-block text-[11px] animate-bounce text-amber-400 font-bold">
+                    ▼
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CONTROLS MODAL --- */}
+      {showHelp && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#12171e] border border-[#27323f] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-sm text-[#e2e8f0]">
+            <div className="flex items-center justify-between border-b border-[#232c37] pb-3">
+              <div className="flex items-center gap-2">
+                <Compass className="w-5 h-5 text-[#c5a059]" />
+                <h3 className="font-serif-title text-lg font-bold text-[#f5efe3]">
+                  Wayfarer Controls & Movement Guide
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="p-1 rounded-lg text-[#94a3b8] hover:text-[#f8fafc] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5">
+                  Ground Movement (Wayfarer Character)
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-[#c5a059] font-bold block">W / A / S / D</span>
+                    <p className="text-[#94a3b8]">Walk in any direction relative to camera</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-[#c5a059] font-bold block">Mouse Drag / Touch</span>
+                    <p className="text-[#94a3b8]">Smoothly orbit camera around character</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-[#c5a059] font-bold block">Shift Key</span>
+                    <p className="text-[#94a3b8]">Sprint smoothly across sanctuaries</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-sky-400 font-bold block">Spacebar</span>
+                    <p className="text-[#94a3b8]">Take flight & transform into Celestial Bird</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-sky-400 block mb-1.5">
+                  Sky Flight (Celestial Bird)
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-[#c5a059] font-bold block">W / S (In Air)</span>
+                    <p className="text-[#94a3b8]">Dive down or climb up; auto-levels if released</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-[#c5a059] font-bold block">A / D (In Air)</span>
+                    <p className="text-[#94a3b8]">Steer and bank smoothly left/right</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-amber-300 font-bold block">F Key</span>
+                    <p className="text-[#94a3b8]">Land & transform back to Wayfarer</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#18202a] border border-[#263342] space-y-0.5">
+                    <span className="text-sky-300 font-bold block">Spacebar (In Air)</span>
+                    <p className="text-[#94a3b8]">Wingbeat boost climb into the open sky</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-2 rounded-xl bg-[#18202a] border border-[#263342] text-center">
+                  <span className="text-emerald-400 font-bold block text-[11px]">E / T Key</span>
+                  <p className="text-[10px] text-[#94a3b8]">Interact / Talk</p>
+                </div>
+                <div className="p-2 rounded-xl bg-[#18202a] border border-[#263342] text-center">
+                  <span className="text-amber-400 font-bold block text-[11px]">G Key</span>
+                  <p className="text-[10px] text-[#94a3b8]">Gear Panel</p>
+                </div>
+                <div className="p-2 rounded-xl bg-[#18202a] border border-[#263342] text-center">
+                  <span className="text-purple-400 font-bold block text-[11px]">C Key</span>
+                  <p className="text-[10px] text-[#94a3b8]">Camera Mode</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#161d26] border border-[#2a3747] text-xs text-[#cbd5e1] leading-relaxed space-y-2">
+              <div className="flex items-center gap-1.5 text-sky-400 font-semibold">
+                <Focus className="w-3.5 h-3.5" />
+                <span>Land Transformation & Visible Gear:</span>
+              </div>
+              <p>
+                When you touch down on any island or press F, your avatar instantaneously transforms from the celestial white bird into the Spiritual Wayfarer with all 5 gear pieces visible, opening your Character Gear Panel automatically! Press Space or the Take Flight button anytime to soar back into the heavens.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowHelp(false)}
+              className="w-full py-2.5 rounded-xl bg-[#c5a059] hover:bg-[#d8b268] text-[#0c0e10] font-bold text-xs cursor-pointer transition-all"
+            >
+              Resume Flight
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- CHARACTER & GEAR INSPECTION PANEL --- */}
+      {/* Manifests when player touches land or toggles with G / button */}
+      <CharacterGearPanel
+        character={character}
+        quests={quests}
+        isOpen={isGearPanelOpen}
+        onClose={() => setIsGearPanelOpen(false)}
+        isGrounded={isGroundedUI}
+        currentIsland={currentIsland}
+        onOpenFullArmory={onOpenArmoryModal}
+        onTakeFlight={() => {
+          physicsRef.current.isGrounded = false;
+          physicsRef.current.pos.y += 12;
+          physicsRef.current.speed = 20;
+          soundSynth.playWingWhoosh();
+          setIsGroundedUI(false);
+          setIsGearPanelOpen(false);
+          triggerTransformToast('Ascended to Flight — Transformed to Celestial Bird');
+        }}
+        onAscendGear={onAscendGear}
+      />
+    </div>
+  );
+};

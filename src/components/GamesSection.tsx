@@ -6,6 +6,7 @@ import BlackjackGame from "./games/BlackjackGame";
 import PongGame from "./games/PongGame";
 import SnakeGame from "./games/SnakeGame";
 import WebShooterGame from "./games/WebShooterGame";
+import { AscensionGame } from "./ascension/AscensionGame";
 
 // 2. Import the new Vanekort game (Beholdt krøllede parenteser her)
 import { VanekortGame } from "./games/VanekortGame";
@@ -17,16 +18,21 @@ export default function GamesSection() {
         <h2 className="text-3xl font-bold mb-8 text-center">Games</h2>
         
         {/* Make sure defaultValue is set to one of your games */}
-        <Tabs defaultValue="vanekort" className="w-full max-w-4xl mx-auto">
+        <Tabs defaultValue="ascension" className="w-full max-w-6xl mx-auto">
           
           {/* 3. Add the Vanekort trigger to your TabsList */}
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-6 mb-8">
+            <TabsTrigger value="ascension">Ascension Archipelago</TabsTrigger>
             <TabsTrigger value="vanekort">Vanekort</TabsTrigger>
             <TabsTrigger value="blackjack">Blackjack</TabsTrigger>
             <TabsTrigger value="pong">Pong</TabsTrigger>
             <TabsTrigger value="snake">Snake</TabsTrigger>
             <TabsTrigger value="web-shooter">Web Shooter</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="ascension" className="mt-4">
+            <AscensionGame />
+          </TabsContent>
 
           {/* 4. Add the TabsContent block for Vanekort */}
           <TabsContent value="vanekort" className="mt-4">
