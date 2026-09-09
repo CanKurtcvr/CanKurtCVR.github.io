@@ -14,6 +14,7 @@ let webs = [];
 let webParticles = [];
 let webSplats = [];
 let laserBeams = [];
+let cameraVideoElement;
 
 function loadMl5() {
     return new Promise((resolve, reject) => {
@@ -51,7 +52,15 @@ async function startCamera() {
         video.elt.muted = true;
         video.elt.playsInline = true;
         video.size(640, 480);
-        video.hide();
+        cameraVideoElement = video.elt;
+        cameraVideoElement.className = "camera-feed";
+        cameraVideoElement.style.display = "block";
+        cameraVideoElement.style.position = "fixed";
+        cameraVideoElement.style.inset = "0";
+        cameraVideoElement.style.width = "100vw";
+        cameraVideoElement.style.height = "100vh";
+        cameraVideoElement.style.objectFit = "cover";
+        cameraVideoElement.style.zIndex = "0";
         const markCameraReady = () => {
             video.elt.play().then(() => {
                 cameraReady = true;
@@ -62,6 +71,12 @@ async function startCamera() {
         video.elt.addEventListener("loadedmetadata", markCameraReady, { once: true });
         video.elt.addEventListener("canplay", markCameraReady, { once: true });
         video.elt.srcObject = cameraStream;
+        cameraVideoElement.addEventListener("pause", () => {
+            if (cameraStarted) cameraVideoElement.play().catch(() => {});
+        });
+        cameraVideoElement.addEventListener("ended", () => {
+            if (cameraStarted) cameraVideoElement.play().catch(() => {});
+        });
         video.elt.addEventListener("error", () => {
             setupError = "Camera could not be started. Check your browser permissions.";
         });
@@ -91,11 +106,7 @@ async function startCamera() {
 }
 
 function draw() {
-    background(15);
-
-    if (video) {
-        image(video, 0, 0, width, height);
-    }
+    clear();
 
     // Dark overlay to highlight bright web effects
     fill(10, 15, 25, 140);
