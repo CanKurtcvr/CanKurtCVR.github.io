@@ -13,7 +13,7 @@ const games = [
   { id: "blackjack", title: "Blackjack", description: "Test your luck and judgment against the dealer.", icon: CircleDot, tone: "from-emerald-500/20 to-teal-500/20" },
   { id: "pong", title: "Pong", description: "A focused arcade duel against the machine.", icon: Target, tone: "from-cyan-500/20 to-blue-500/20" },
   { id: "snake", title: "Snake", description: "Grow carefully, move deliberately, stay alive.", icon: Grid3X3, tone: "from-lime-500/20 to-green-500/20" },
-  { id: "web-shooter", title: "Web Shooter", description: "Aim, react, and clear the screen.", icon: Gamepad2, tone: "from-rose-500/20 to-purple-500/20" },
+  { id: "web-shooter", title: "Superhero Vision", description: "Choose Spider-Man or Superman, then use your camera-powered ability.", icon: Gamepad2, tone: "from-rose-500/20 to-purple-500/20" },
 ] as const;
 
 export default function GamesSection() {

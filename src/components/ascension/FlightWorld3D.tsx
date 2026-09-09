@@ -90,7 +90,8 @@ export const ISLAND_NPCS: IslandNPC[] = [
       'A scattered mind attempts all things at once and finishes none. True ascension is forged through the quiet, deliberate rhythm of each day.',
       'Spread your wings (Space) and seek the guardians of each shrine. Let consistency be your anchor among the clouds!',
     ],
-    localPos: { x: 5.5, y: 6.0, z: 0 },
+    // Place the guide directly on the player's opening approach from the south.
+    localPos: { x: 0, y: 6.0, z: -18 },
   },
   {
     id: 'npc-zahra',
@@ -2068,6 +2069,11 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       }
 
       const keys = physicsRef.current.keys;
+      // Fullscreen is exited only by the browser's Escape handling. Space remains
+      // reserved for takeoff and aerial boost.
+      if (e.code === 'Escape' && document.fullscreenElement) {
+        return;
+      }
       if (e.code in keys) {
         keys[e.code as keyof typeof keys] = true;
       }

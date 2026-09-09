@@ -22,6 +22,15 @@ const initialQuests: QuestStatus[] = QUEST_DEFINITIONS.map((quest) => ({
   tier: "Common",
 }));
 
+const realLifeQuests: Record<string, string> = {
+  nexus: "Choose one priority for tomorrow and write it down in five quiet minutes.",
+  spirituality: "Spend 10 minutes today in meditation, breathwork, prayer, or quiet gratitude.",
+  reflection: "Take 5 minutes tonight to write what helped, what hindered, and what you will release.",
+  vitality: "Complete a deliberate movement session or reach 10,000 steps today.",
+  wisdom: "Read or study without your phone for at least 30 focused minutes.",
+  creation: "Practice a creative skill for 30 minutes and make one small thing.",
+};
+
 export function AscensionGame() {
   const [character, setCharacter] = useState<CharacterState>(() => ({
     ...INITIAL_CHARACTER_STATE,
@@ -90,6 +99,14 @@ export function AscensionGame() {
             <p className="mt-4 text-sm leading-6 text-slate-300">
               {selectedArea.area.description}
             </p>
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">
+                Real-life quest
+              </p>
+              <p className="mt-2 text-sm leading-6 text-amber-50">
+                {realLifeQuests[selectedArea.island.id] ?? selectedArea.area.actionPrompt}
+              </p>
+            </div>
             <p className="mt-4 border-l-2 border-sky-400/60 pl-3 text-sm italic text-slate-400">
               {selectedArea.area.loreSnippet}
             </p>
@@ -98,7 +115,7 @@ export function AscensionGame() {
               className="mt-6 w-full rounded-lg bg-sky-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-sky-300"
               onClick={completeArea}
             >
-              Mark sanctuary complete (+25 XP)
+              I completed this quest (+25 XP)
             </button>
           </div>
         </div>

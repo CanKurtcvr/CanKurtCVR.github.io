@@ -6,12 +6,14 @@ let setupError = "";
 let cameraReady = false;
 let cameraStarted = false;
 let cameraStream;
+let hero = new URLSearchParams(window.location.search).get("hero") === "superman" ? "superman" : "spiderman";
 
 // Web mechanics
 let isShooting = false;
 let webs = [];
 let webParticles = [];
 let webSplats = [];
+let laserBeams = [];
 
 function loadMl5() {
     return new Promise((resolve, reject) => {
@@ -147,7 +149,7 @@ function draw() {
             if (gestureDetected) {
                 if (!isShooting) {
                     isShooting = true;
-                    shootWeb(palm);
+                    hero === "superman" ? shootLaser(palm) : shootWeb(palm);
                 }
                 drawAimReticle(palm.x, palm.y);
             } else {
@@ -161,6 +163,7 @@ function draw() {
     }
 
     updateAndRenderSplats();
+    updateAndRenderLasers();
     updateAndRenderWebs();
     drawHUD(gestureDetected);
 }
@@ -196,6 +199,26 @@ function shootWeb(origin) {
             vy: dir.y * random(8, 18) + random(-3, 3),
             life: 255,
         });
+    }
+
+    function shootLaser(origin) {
+        const targetX = width / 2 + random(-15, 15);
+        const targetY = height / 2 + random(-15, 15);
+        laserBeams.push({ x1: origin.x, y1: origin.y, x2: targetX, y2: targetY, life: 255 });
+    }
+
+    function updateAndRenderLasers() {
+        for (let i = laserBeams.length - 1; i >= 0; i--) {
+            const beam = laserBeams[i];
+            stroke(255, 30, 30, beam.life * 0.35);
+            strokeWeight(18);
+            line(beam.x1, beam.y1, beam.x2, beam.y2);
+            stroke(255, 220, 170, beam.life);
+            strokeWeight(5);
+            line(beam.x1, beam.y1, beam.x2, beam.y2);
+            beam.life -= 14;
+            if (beam.life <= 0) laserBeams.splice(i, 1);
+        }
     }
 }
 
@@ -353,14 +376,14 @@ function drawHUD(active) {
     fill(255);
     textSize(15);
     textAlign(LEFT, TOP);
-    text("Spidey Web Shooter", 35, 30);
+    text(hero === "superman" ? "Superman Laser Vision" : "Spider-Man Web Shooter", 35, 30);
 
     textSize(12);
     fill(active ? color(0, 230, 255) : color(180));
-    text(`Status: ${active ? "THWIP! (SCREEN HIT)" : "AIMING CENTER"}`, 35, 54);
+    text(`Status: ${active ? (hero === "superman" ? "HEAT VISION!" : "THWIP! (SCREEN HIT)") : "AIMING CENTER"}`, 35, 54);
 
     fill(140);
-    text("Extend Index + Pinky to shoot center", 35, 74);
+    text(hero === "superman" ? "Extend Index + Pinky to fire eye lasers" : "Extend Index + Pinky to shoot webs", 35, 74);
 }
 
 function drawStatus(mainText, subText) {
