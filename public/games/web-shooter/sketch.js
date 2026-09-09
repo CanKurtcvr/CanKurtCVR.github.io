@@ -52,26 +52,32 @@ async function startCamera() {
         video.elt.playsInline = true;
         video.size(640, 480);
         video.hide();
-        video.elt.addEventListener("loadedmetadata", () => {
+        const markCameraReady = () => {
             video.elt.play().then(() => {
                 cameraReady = true;
             }).catch(() => {
                 setupError = "Camera started but the video feed could not play.";
             });
-        }, { once: true });
+        };
+        video.elt.addEventListener("loadedmetadata", markCameraReady, { once: true });
+        video.elt.addEventListener("canplay", markCameraReady, { once: true });
         video.elt.srcObject = cameraStream;
         video.elt.addEventListener("error", () => {
             setupError = "Camera could not be started. Check your browser permissions.";
         });
 
-        await loadMl5();
-
-        handPose = ml5.handPose({ flipped: true }, () => {
+        if (hero === "superman") {
+            // Superman uses automatic eye lasers and does not need hand tracking.
             modelLoaded = true;
-            handPose.detectStart(video, (results) => {
-                hands = results;
+        } else {
+            await loadMl5();
+            handPose = ml5.handPose({ flipped: true }, () => {
+                modelLoaded = true;
+                handPose.detectStart(video, (results) => {
+                    hands = results;
+                });
             });
-        });
+        }
     } catch (error) {
         cameraStarted = false;
         cameraStream?.getTracks().forEach((track) => track.stop());
@@ -110,15 +116,25 @@ function draw() {
 
     if (!cameraReady || !modelLoaded) {
         drawStatus(
-            cameraReady ? "Initializing ml5 HandPose..." : "Requesting camera access...",
+            cameraReady ? "Initializing hand tracking..." : "Requesting camera access...",
             "Allow camera access when your browser asks."
         );
         return;
     }
 
+    if (hero === "superman") {
+        const eyeY = height * 0.43;
+        const eyeGap = min(width * 0.06, 48);
+        if (frameCount % 10 === 0) {
+            shootLaser({ x: width / 2 - eyeGap, y: eyeY });
+            shootLaser({ x: width / 2 + eyeGap, y: eyeY });
+        }
+        drawAimReticle(width / 2, height / 2);
+    }
+
     let gestureDetected = false;
 
-    if (hands.length > 0 && hands[0].keypoints) {
+    if (hero === "spiderman" && hands.length > 0 && hands[0].keypoints) {
         const pts = hands[0].keypoints;
 
         const wrist = getPt(pts[0]);
@@ -149,16 +165,16 @@ function draw() {
             if (gestureDetected) {
                 if (!isShooting) {
                     isShooting = true;
-                    hero === "superman" ? shootLaser(palm) : shootWeb(palm);
+                    shootWeb(palm);
                 }
                 drawAimReticle(palm.x, palm.y);
-            } else {
+            } else if (hero === "spiderman") {
                 isShooting = false;
             }
 
             drawKeypoints([wrist, indexTip, middleTip, ringTip, pinkyTip], gestureDetected);
         }
-    } else {
+    } else if (hero === "spiderman") {
         isShooting = false;
     }
 
@@ -200,25 +216,25 @@ function shootWeb(origin) {
             life: 255,
         });
     }
+}
 
-    function shootLaser(origin) {
-        const targetX = width / 2 + random(-15, 15);
-        const targetY = height / 2 + random(-15, 15);
-        laserBeams.push({ x1: origin.x, y1: origin.y, x2: targetX, y2: targetY, life: 255 });
-    }
+function shootLaser(origin) {
+    const targetX = width / 2 + random(-15, 15);
+    const targetY = height / 2 + random(-15, 15);
+    laserBeams.push({ x1: origin.x, y1: origin.y, x2: targetX, y2: targetY, life: 255 });
+}
 
-    function updateAndRenderLasers() {
-        for (let i = laserBeams.length - 1; i >= 0; i--) {
-            const beam = laserBeams[i];
-            stroke(255, 30, 30, beam.life * 0.35);
-            strokeWeight(18);
-            line(beam.x1, beam.y1, beam.x2, beam.y2);
-            stroke(255, 220, 170, beam.life);
-            strokeWeight(5);
-            line(beam.x1, beam.y1, beam.x2, beam.y2);
-            beam.life -= 14;
-            if (beam.life <= 0) laserBeams.splice(i, 1);
-        }
+function updateAndRenderLasers() {
+    for (let i = laserBeams.length - 1; i >= 0; i--) {
+        const beam = laserBeams[i];
+        stroke(255, 30, 30, beam.life * 0.35);
+        strokeWeight(18);
+        line(beam.x1, beam.y1, beam.x2, beam.y2);
+        stroke(255, 220, 170, beam.life);
+        strokeWeight(5);
+        line(beam.x1, beam.y1, beam.x2, beam.y2);
+        beam.life -= 14;
+        if (beam.life <= 0) laserBeams.splice(i, 1);
     }
 }
 
