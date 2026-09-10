@@ -653,6 +653,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   const cameraInputAtRef = useRef(0);
   const petTypeRef = useRef<PetType>(petType);
   petTypeRef.current = petType;
+  const [mobilePadPosition, setMobilePadPosition] = useState({ x: 0, y: 0 });
 
   const setMobileKey = useCallback((key: 'KeyW' | 'KeyS' | 'KeyA' | 'KeyD' | 'Space' | 'KeyF', pressed: boolean) => {
     physicsRef.current.keys[key] = pressed;
@@ -668,6 +669,10 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - (rect.left + rect.width / 2);
     const y = event.clientY - (rect.top + rect.height / 2);
+    const maxOffset = Math.min(rect.width, rect.height) * 0.34;
+    const distance = Math.hypot(x, y);
+    const scale = distance > maxOffset ? maxOffset / distance : 1;
+    setMobilePadPosition({ x: x * scale, y: y * scale });
     const horizontal = Math.abs(x) > Math.abs(y) * 0.7;
     const keys = physicsRef.current.keys;
     keys.KeyW = !horizontal && y < -10;
@@ -683,6 +688,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     keys.KeyS = false;
     keys.KeyA = false;
     keys.KeyD = false;
+    setMobilePadPosition({ x: 0, y: 0 });
   }, []);
 
   // Handle Land & Enter Area
@@ -3141,8 +3147,8 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       <div className="pointer-events-auto absolute bottom-28 left-4 z-20 flex flex-col items-center gap-1 md:hidden">
         <div
           role="application"
-          aria-label="Movement joystick"
-          className="relative h-28 w-28 touch-none rounded-full border border-white/25 bg-slate-950/85 shadow-lg backdrop-blur"
+          aria-label="Movement trackpad"
+          className="relative h-32 w-32 touch-none rounded-2xl border border-white/25 bg-slate-950/85 shadow-lg backdrop-blur"
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
             updateMobileJoystick(event);
@@ -3153,8 +3159,12 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           onPointerUp={releaseMobileJoystick}
           onPointerCancel={releaseMobileJoystick}
         >
-          <span className="absolute inset-8 rounded-full border border-white/20 bg-white/10" />
-          <span className="absolute left-1/2 top-2 -translate-x-1/2 text-xs text-white/70">Move</span>
+          <span className="absolute inset-7 rounded-xl border border-white/20 bg-white/10" />
+          <span
+            className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-sky-200/50 bg-sky-300/25 shadow-[0_0_18px_rgba(125,211,252,0.35)] transition-transform"
+            style={{ transform: `translate(calc(-50% + ${mobilePadPosition.x}px), calc(-50% + ${mobilePadPosition.y}px))` }}
+          />
+          <span className="absolute inset-x-0 bottom-2 text-center text-[10px] font-semibold uppercase tracking-wider text-white/70">Move</span>
         </div>
         <div className="mt-2 flex gap-1">
           <button
