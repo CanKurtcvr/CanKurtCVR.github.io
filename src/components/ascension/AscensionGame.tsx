@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Play, Swords, X } from "lucide-react";
 import { FlightWorld3D, IslandNPC } from "./FlightWorld3D";
 import { BattleArena } from "./BattleArena";
@@ -13,6 +13,8 @@ import {
   WorldArea,
   HabitIsland,
   QUEST_DEFINITIONS,
+  GearSlot,
+  GearItem,
 } from "./types";
 
 const initialQuests: QuestStatus[] = QUEST_DEFINITIONS.map((quest) => ({
@@ -41,14 +43,41 @@ const npcChallenges: Record<string, string> = {
   creation: "Spend 30 minutes practicing a creative skill and make one small thing.",
 };
 
+const gearLabels: Record<GearSlot, string> = {
+  head: "head gear",
+  chest: "chest armor",
+  weapon: "weapon",
+  accessory: "sacred relic",
+  feet: "traveler boots",
+};
+
+const arenaBenefits: Record<GearSlot, string> = {
+  head: "improves the protection from Stillness Guard",
+  chest: "increases your resilience against incoming attacks",
+  weapon: "adds damage to every offensive arena skill",
+  accessory: "sharpens focus damage and defensive control",
+  feet: "adds momentum to Focus Strike",
+};
+
+interface ChallengeGearDetails {
+  item: GearItem;
+  nextStage: GearItem["stages"][number] | null;
+}
+
 export function AscensionGame() {
   const [hasStarted, setHasStarted] = useState(false);
-  const [character, setCharacter] = useState<CharacterState>(() => ({
-    ...INITIAL_CHARACTER_STATE,
-    equipment: { ...INITIAL_CHARACTER_STATE.equipment },
-    gearInventory: [...INITIAL_CHARACTER_STATE.gearInventory],
-  }));
-  const [quests, setQuests] = useState<QuestStatus[]>(initialQuests);
+  const [character, setCharacter] = useState<CharacterState>(() => {
+    const saved = localStorage.getItem("ascension-character");
+    return saved ? JSON.parse(saved) as CharacterState : {
+      ...INITIAL_CHARACTER_STATE,
+      equipment: { ...INITIAL_CHARACTER_STATE.equipment },
+      gearInventory: [...INITIAL_CHARACTER_STATE.gearInventory],
+    };
+  });
+  const [quests, setQuests] = useState<QuestStatus[]>(() => {
+    const saved = localStorage.getItem("ascension-quests");
+    return saved ? JSON.parse(saved) as QuestStatus[] : initialQuests;
+  });
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>("golden");
   const [selectedArea, setSelectedArea] = useState<{
     area: WorldArea;
@@ -61,6 +90,45 @@ export function AscensionGame() {
   const [isArenaOpen, setIsArenaOpen] = useState(false);
 
   const islands = useMemo(() => HABIT_ISLANDS, []);
+
+  const getChallengeGear = (questId: string): ChallengeGearDetails | null => {
+    const item = Object.values(character.equipment).find((gear) => gear?.islandOrigin === questId);
+    if (!item) return null;
+    return {
+      item,
+      nextStage: item.stages[item.level] ?? null,
+    };
+  };
+
+  useEffect(() => {
+    localStorage.setItem("ascension-character", JSON.stringify(character));
+    localStorage.setItem("ascension-quests", JSON.stringify(quests));
+  }, [character, quests]);
+
+  const ascendGear = (slot: GearSlot) => {
+    setCharacter((current) => {
+      const item = current.equipment[slot];
+      if (!item) return current;
+      const quest = quests.find((entry) => entry.questId === item.islandOrigin);
+      const nextLevel = Math.min(item.level + 1, item.stages.length);
+      if (nextLevel === item.level || !quest || quest.currentStreak < item.streakRequirementForNext) return current;
+      const stage = item.stages[nextLevel - 1];
+      const upgraded = {
+        ...item,
+        level: nextLevel,
+        tier: stage.tier,
+        name: stage.name,
+        statBonus: { ...item.statBonus, amount: stage.statBoost },
+        streakRequirementForNext: nextLevel < item.stages.length ? [7, 30, 90][nextLevel - 1] ?? 90 : 90,
+      };
+      return {
+        ...current,
+        activeTitle: stage.title,
+        equipment: { ...current.equipment, [slot]: upgraded },
+        gearInventory: current.gearInventory.map((gear) => gear.id === item.id ? upgraded : gear),
+      };
+    });
+  };
 
   if (!hasStarted) {
     return (
@@ -129,6 +197,7 @@ export function AscensionGame() {
         onTimeOfDayChange={setTimeOfDay}
         onEnterArea={(area, island) => setSelectedArea({ area, island })}
         onAwardXP={awardXp}
+        onAscendGear={ascendGear}
         onDialogueComplete={(npc) =>
           setNpcChallenge({
             npc,
@@ -140,7 +209,7 @@ export function AscensionGame() {
       <button
         type="button"
         onClick={() => setIsArenaOpen(true)}
-        className="absolute right-3 top-3 z-40 inline-flex items-center gap-2 rounded-xl border border-rose-400/40 bg-slate-950/85 px-3 py-2 text-xs font-semibold text-rose-200 shadow-lg backdrop-blur transition hover:border-rose-300 hover:bg-rose-950/80"
+        className="absolute right-3 top-16 z-40 inline-flex items-center gap-2 rounded-xl border border-rose-400/40 bg-slate-950/85 px-3 py-2 text-xs font-semibold text-rose-200 shadow-lg backdrop-blur transition hover:border-rose-300 hover:bg-rose-950/80"
       >
         <Swords className="h-4 w-4" />
         Battle Arena
@@ -191,7 +260,7 @@ export function AscensionGame() {
       )}
 
       {npcChallenge && (
-        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-amber-300/40 bg-slate-950/95 p-6 text-slate-100 shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-300">
               Challenge from {npcChallenge.npc.name}
@@ -200,6 +269,31 @@ export function AscensionGame() {
             <p className="mt-4 text-sm leading-6 text-slate-300">
               {npcChallenge.text}
             </p>
+            {(() => {
+              const gear = getChallengeGear(npcChallenge.npc.islandId);
+              if (!gear) return null;
+              const { item, nextStage } = gear;
+              return (
+                <div className="mt-4 rounded-xl border border-sky-300/30 bg-sky-400/10 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">
+                    Gear progression
+                  </p>
+                  <p className="mt-2 text-sm text-slate-200">
+                    This challenge upgrades your <span className="font-semibold text-white">{gearLabels[item.slot]}</span>
+                    {" "}({item.name}) after a <span className="font-semibold text-white">{item.streakRequirementForNext}-day streak</span>.
+                  </p>
+                  {nextStage ? (
+                    <p className="mt-2 text-xs leading-5 text-sky-100/80">
+                      Next: {nextStage.name} ({nextStage.tier}) - {arenaBenefits[item.slot]}.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs leading-5 text-sky-100/80">
+                      This gear is already at its final tier; continued streaks still strengthen your overall arena power.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             <p className="mt-4 text-xs leading-5 text-slate-500">
               Complete the real-life challenge, then return and confirm it here to add one day to your streak.
             </p>

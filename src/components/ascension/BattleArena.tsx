@@ -88,6 +88,12 @@ export function BattleArena({ character, quests, onAwardXP, onClose }: BattleAre
   const averageStreak = quests.length
     ? Math.round(quests.reduce((total, quest) => total + quest.currentStreak, 0) / quests.length)
     : 0;
+  const gearPower = Object.values(equipped).reduce(
+    (total, item) => total + (item?.level ?? 0) + Math.floor((item?.statBonus.amount ?? 0) / 10),
+    0,
+  );
+  const arenaDamageBonus = Math.min(20, Math.floor(gearPower / 2));
+  const guardReduction = Math.min(3, Math.floor(gearPower / 5));
 
   const resetBattle = (nextBossId = selectedBossId) => {
     setSelectedBossId(nextBossId);
@@ -105,7 +111,7 @@ export function BattleArena({ character, quests, onAwardXP, onClose }: BattleAre
       setGuarding(true);
       setBattleLog((current) => [`${skill.name} is active. The next attack will be softened.`, ...current].slice(0, 4));
     } else {
-      const damage = skill.power + Math.min(12, Math.floor(averageStreak / 3));
+      const damage = skill.power + Math.min(12, Math.floor(averageStreak / 3)) + arenaDamageBonus;
       const nextBossHp = Math.max(0, bossHp - damage);
       setBossHp(nextBossHp);
       setBattleLog((current) => [`You used ${skill.name} for ${damage} focus damage.`, ...current].slice(0, 4));
@@ -117,7 +123,7 @@ export function BattleArena({ character, quests, onAwardXP, onClose }: BattleAre
     }
 
     const incomingDamage = (guarding || skill.id === 'stillness-guard')
-      ? Math.ceil(boss.attack / 2)
+      ? Math.max(1, Math.ceil(boss.attack / 2) - guardReduction)
       : boss.attack;
     const nextPlayerHp = Math.max(0, playerHp - incomingDamage);
     setPlayerHp(nextPlayerHp);
@@ -127,14 +133,14 @@ export function BattleArena({ character, quests, onAwardXP, onClose }: BattleAre
   };
 
   return (
-    <div className="absolute inset-0 z-[70] overflow-y-auto bg-[#070d15]/95 p-4 text-slate-100 backdrop-blur-sm sm:p-8">
+    <div className="fixed inset-0 z-[110] overflow-y-auto bg-[#070d15]/95 p-4 text-slate-100 backdrop-blur-sm sm:p-8">
       <div className="mx-auto max-w-5xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300">The Inner Arena</p>
             <h2 className="mt-2 text-3xl font-semibold">Face the habits that hold you back</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              Gear combinations unlock skills. Your streaks add force. The battle is a reminder to practice, not a test of worth.
+                      Gear combinations unlock skills. Upgraded gear adds {arenaDamageBonus} damage to attacks and up to {guardReduction} extra protection while guarding. Your streaks add force. The battle is a reminder to practice, not a test of worth.
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Close battle arena">

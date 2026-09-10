@@ -415,7 +415,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === containerRef.current);
+      setIsFullscreen(document.fullscreenElement === containerRef.current?.parentElement);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -3082,7 +3082,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
               if (document.fullscreenElement) {
                 await document.exitFullscreen();
               } else {
-                await containerRef.current?.requestFullscreen();
+                await containerRef.current?.parentElement?.requestFullscreen();
               }
             }}
             className="p-2.5 rounded-xl bg-[#11161d]/85 backdrop-blur-md border border-[#27323f] text-[#cbd5e1] hover:text-[#f5efe3] transition-all cursor-pointer shadow-lg"

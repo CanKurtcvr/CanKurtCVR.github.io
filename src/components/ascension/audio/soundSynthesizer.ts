@@ -70,9 +70,9 @@ class SoundSynthesizer {
     if (!this.ctx || !this.musicGain || this.musicTimer !== null) return;
 
     this.musicTimer = window.setInterval(() => {
-      if (Math.random() > 0.2) this.playBirdCall();
-    }, 5200);
-    this.playBirdCall();
+      if (Math.random() > 0.12) this.playAmbientCall();
+    }, 3900);
+    this.playAmbientCall();
   }
 
   public stopMusic() {
@@ -83,7 +83,7 @@ class SoundSynthesizer {
 
   }
 
-  private playBirdCall() {
+  private playAmbientCall() {
     if (!this.ctx || !this.musicGain || this.isMuted) return;
 
     try {
@@ -93,18 +93,19 @@ class SoundSynthesizer {
       const now = this.ctx.currentTime;
       const oscillator = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      const startFrequency = 1500 + Math.random() * 500;
-      oscillator.type = 'sine';
+      const startFrequency = 1100 + Math.random() * 1200;
+      const callType = Math.floor(Math.random() * 3);
+      oscillator.type = callType === 2 ? 'triangle' : 'sine';
       oscillator.frequency.setValueAtTime(startFrequency, now);
-      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * 1.45, now + 0.12);
-      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * 1.08, now + 0.28);
+      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * (callType === 0 ? 1.55 : 0.82), now + 0.12);
+      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * (callType === 1 ? 1.3 : 1.08), now + 0.28);
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.035, now + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      gain.gain.exponentialRampToValueAtTime(0.025 + Math.random() * 0.02, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (callType === 2 ? 0.5 : 0.32));
       oscillator.connect(gain);
       gain.connect(this.musicGain);
       oscillator.start(now);
-      oscillator.stop(now + 0.35);
+      oscillator.stop(now + (callType === 2 ? 0.55 : 0.35));
     } catch {
       // Ignore transient Web Audio scheduling errors.
     }
