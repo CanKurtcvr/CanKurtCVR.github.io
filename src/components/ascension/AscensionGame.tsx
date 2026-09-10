@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Play, Swords, X } from "lucide-react";
-import { FlightWorld3D, IslandNPC } from "./FlightWorld3D";
+import { FlightWorld3D, IslandNPC, PetType } from "./FlightWorld3D";
 import { BattleArena } from "./BattleArena";
 import {
   INITIAL_CHARACTER_STATE,
@@ -66,6 +66,10 @@ interface ChallengeGearDetails {
 
 export function AscensionGame() {
   const [hasStarted, setHasStarted] = useState(false);
+  const [petType, setPetType] = useState<PetType>(() => {
+    const saved = localStorage.getItem("ascension-pet");
+    return saved === "dog" || saved === "turtle" ? saved : "cat";
+  });
   const [character, setCharacter] = useState<CharacterState>(() => {
     const saved = localStorage.getItem("ascension-character");
     return saved ? JSON.parse(saved) as CharacterState : {
@@ -103,7 +107,8 @@ export function AscensionGame() {
   useEffect(() => {
     localStorage.setItem("ascension-character", JSON.stringify(character));
     localStorage.setItem("ascension-quests", JSON.stringify(quests));
-  }, [character, quests]);
+    localStorage.setItem("ascension-pet", petType);
+  }, [character, quests, petType]);
 
   const ascendGear = (slot: GearSlot) => {
     setCharacter((current) => {
@@ -149,6 +154,26 @@ export function AscensionGame() {
             <Play className="h-4 w-4 fill-current" />
             Play Ascension
           </button>
+          <div className="mx-auto mt-6 max-w-md rounded-xl border border-slate-700 bg-slate-950/40 p-4 text-left">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Choose your companion</p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(["cat", "dog", "turtle"] as PetType[]).map((pet) => (
+                <button
+                  key={pet}
+                  type="button"
+                  onClick={() => setPetType(pet)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
+                    petType === pet
+                      ? "border-amber-300 bg-amber-300/15 text-amber-100"
+                      : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white"
+                  }`}
+                >
+                  {pet}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Your companion follows behind you while you walk.</p>
+          </div>
           <p className="mt-4 text-xs text-slate-500">Use WASD or arrow keys to move once the world opens.</p>
         </div>
       </div>
@@ -189,10 +214,11 @@ export function AscensionGame() {
   };
 
   return (
-    <div className="relative isolate h-[min(78vh,900px)] min-h-[620px] overflow-hidden rounded-2xl border border-slate-700 bg-[#07111d] shadow-2xl">
+    <div className="relative isolate h-[min(78vh,900px)] min-h-[620px] overflow-hidden rounded-2xl border border-slate-700 bg-[#07111d] shadow-2xl [&:fullscreen]:h-screen [&:fullscreen]:min-h-0 [&:fullscreen]:w-screen [&:fullscreen]:rounded-none [&:fullscreen]:border-0">
       <FlightWorld3D
         character={character}
         quests={quests}
+        petType={petType}
         timeOfDay={timeOfDay}
         onTimeOfDayChange={setTimeOfDay}
         onEnterArea={(area, island) => setSelectedArea({ area, island })}

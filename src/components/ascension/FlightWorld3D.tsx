@@ -36,6 +36,7 @@ import { CharacterGearPanel } from './CharacterGearPanel';
 interface FlightWorld3DProps {
   character: CharacterState;
   quests: QuestStatus[];
+  petType: PetType;
   timeOfDay: TimeOfDay;
   onTimeOfDayChange: (time: TimeOfDay) => void;
   onEnterArea: (area: WorldArea, island: HabitIsland) => void;
@@ -45,6 +46,8 @@ interface FlightWorld3DProps {
   onOpenArmoryModal?: () => void;
   onAscendGear?: (slot: GearSlot) => void;
 }
+
+export type PetType = 'cat' | 'dog' | 'turtle';
 
 // 3D coordinate mapping for islands
 interface Island3DConfig {
@@ -401,6 +404,7 @@ function createNPCEntity(npc: IslandNPC): {
 export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   character,
   quests,
+  petType,
   timeOfDay,
   onTimeOfDayChange,
   onEnterArea,
@@ -650,6 +654,8 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     camPitch: 0.18,
   });
   const cameraInputAtRef = useRef(0);
+  const petTypeRef = useRef<PetType>(petType);
+  petTypeRef.current = petType;
 
   const setMobileKey = useCallback((key: 'KeyW' | 'KeyS' | 'KeyA' | 'KeyD' | 'Space' | 'KeyF', pressed: boolean) => {
     physicsRef.current.keys[key] = pressed;
@@ -1466,6 +1472,49 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     const birdBody = new THREE.Group();
     birdBody.visible = false; // Initially grounded with Wayfarer character
     birdRoot.add(birdBody);
+
+    // Small companion that follows behind the grounded wayfarer.
+    const petRoot = new THREE.Group();
+    const petGroups: Record<PetType, THREE.Group> = {
+      cat: new THREE.Group(),
+      dog: new THREE.Group(),
+      turtle: new THREE.Group(),
+    };
+    const petBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xc084fc, roughness: 0.8 });
+    const petDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75 });
+    const petShellMaterial = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.9 });
+    const addPetBody = (group: THREE.Group, body: THREE.Mesh, ears: THREE.Mesh[] = []) => {
+      body.position.y = 0.45;
+      body.castShadow = true;
+      group.add(body);
+      ears.forEach((ear) => {
+        ear.castShadow = true;
+        group.add(ear);
+      });
+    };
+    addPetBody(
+      petGroups.cat,
+      new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), petBodyMaterial),
+      [
+        new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 4), petBodyMaterial),
+        new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 4), petBodyMaterial),
+      ],
+    );
+    petGroups.cat.children[1].position.set(-0.2, 0.85, 0);
+    petGroups.cat.children[2].position.set(0.2, 0.85, 0);
+    addPetBody(
+      petGroups.dog,
+      new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 10), petDarkMaterial),
+      [new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), petDarkMaterial)],
+    );
+    petGroups.dog.children[1].position.set(0, 0.82, 0.28);
+    addPetBody(petGroups.turtle, new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), petShellMaterial));
+    petGroups.turtle.children[0].scale.set(1.15, 0.55, 1.25);
+    Object.values(petGroups).forEach((group) => {
+      group.visible = false;
+      petRoot.add(group);
+    });
+    scene.add(petRoot);
 
     // Materials for White Bird
     const whiteFeatherMat = new THREE.MeshStandardMaterial({
@@ -2487,6 +2536,19 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
       // --- ANIMATE VISUAL AVATAR (AIRBORNE BIRD VS GROUNDED WAYFARER WITH VISIBLE GEAR) ---
       birdRoot.position.copy(p.pos);
+      const activePet = petGroups[petTypeRef.current];
+      Object.values(petGroups).forEach((group) => {
+        group.visible = group === activePet && p.isGrounded;
+      });
+      if (p.isGrounded) {
+        const followDistance = 2.6;
+        petRoot.position.set(
+          p.pos.x - Math.sin(p.yaw) * followDistance,
+          p.pos.y - 1.45 + Math.sin(elapsed * 4) * 0.03,
+          p.pos.z - Math.cos(p.yaw) * followDistance,
+        );
+        petRoot.rotation.y = p.yaw;
+      }
 
       // Synchronize grounded state with UI and trigger transformation if needed
       if (p.isGrounded && !wasGroundedRef.current) {
@@ -2939,7 +3001,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       ref={containerRef}
       style={{ touchAction: 'none' }}
       className={`relative w-full overflow-hidden rounded-2xl border border-[#262e36] bg-[#090d12] select-none shadow-[0_8px_32px_rgba(0,0,0,0.5)] ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'h-[640px] sm:h-[720px]'
+        isFullscreen ? 'absolute inset-0 z-50 h-full rounded-none' : 'h-[640px] sm:h-[720px]'
       }`}
     >
       {/* 3D WebGL Canvas */}
