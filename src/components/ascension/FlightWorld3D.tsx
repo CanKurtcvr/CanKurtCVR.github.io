@@ -2531,7 +2531,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
         const followDistance = 2.6;
         petRoot.position.set(
           p.pos.x - Math.sin(p.yaw) * followDistance,
-          p.pos.y - 1.8 + Math.sin(elapsed * 4) * 0.03,
+          p.pos.y - 0.9 + Math.sin(elapsed * 4) * 0.03,
           p.pos.z - Math.cos(p.yaw) * followDistance,
         );
         petRoot.rotation.y = p.yaw;
