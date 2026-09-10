@@ -444,8 +444,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   // Character & Gear Panel States (Land Transformation Feature)
   const [isGearPanelOpen, setIsGearPanelOpen] = useState(false);
   const [isGroundedUI, setIsGroundedUI] = useState(true);
-  const [showIntroGuide, setShowIntroGuide] = useState(true);
-  const [introStep, setIntroStep] = useState<1 | 2 | 3>(1);
   const [transformToast, setTransformToast] = useState<string | null>(null);
   const transformToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -2548,7 +2546,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
         wasGroundedRef.current = false;
         setIsGroundedUI(false);
         transformAnimTime = 0.9;
-        setIntroStep(3);
       }
 
       // Update Transformation Shockwave Visual Effect
@@ -2573,7 +2570,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
         // Track intro progress along the straight path
         if (p.pos.z > -16 && p.pos.z < 25) {
-          setIntroStep((prev) => (prev < 2 ? 2 : prev));
         }
 
         const isWalking = (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD);
@@ -3130,82 +3126,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
           </button>
         </div>
       </div>
-
-      {/* --- STRAIGHT PATH INTRODUCTION GUIDE BANNER --- */}
-      {showIntroGuide && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4 pointer-events-none">
-          <div className="pointer-events-auto bg-[#0d121a]/95 backdrop-blur-xl border border-amber-400/40 rounded-2xl p-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs text-[#f1f5f9]">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#232f3e]">
-              <div className="flex items-center gap-2">
-                <Compass className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-amber-300 text-sm">The Straight Path • Introduction</span>
-              </div>
-              <button
-                onClick={() => setShowIntroGuide(false)}
-                className="text-[#94a3b8] hover:text-white p-1 rounded-md hover:bg-white/10 transition-all cursor-pointer text-xs"
-                title="Dismiss Guide"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-[#94a3b8] mb-2 text-[11px] leading-relaxed">
-              This is not a race. Choose one small action: walk to a sanctuary, listen to its guide, and carry one idea back into your day.
-            </p>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div
-                className={`p-2 rounded-xl border transition-all ${
-                  introStep === 1
-                    ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-sm'
-                    : introStep > 1
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
-                }`}
-              >
-                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>1. Arrive</span>
-                </div>
-                <div className="text-[10px] text-[#94a3b8]">
-                  Press <strong className="text-white">W</strong> or <strong className="text-white">↑</strong> along pavers
-                </div>
-              </div>
-
-              <div
-                className={`p-2 rounded-xl border transition-all ${
-                  introStep === 2
-                    ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-sm animate-pulse'
-                    : introStep > 2
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
-                }`}
-              >
-                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>2. Listen</span>
-                </div>
-                <div className="text-[10px] text-[#94a3b8]">
-                  Meet at Sundial & press <strong className="text-white">E</strong>
-                </div>
-              </div>
-
-              <div
-                className={`p-2 rounded-xl border transition-all ${
-                  introStep === 3
-                    ? 'bg-sky-500/20 border-sky-400/60 text-sky-200 shadow-sm'
-                    : 'bg-[#151c27] border-[#222e3e] text-[#64748b]'
-                }`}
-              >
-                <div className="font-bold text-[11px] flex items-center gap-1 mb-0.5">
-                  <span>3. Reflect</span>
-                </div>
-                <div className="text-[10px] text-[#94a3b8]">
-                  Walk off edge or press <strong className="text-white">Space</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* --- TRANSFORMATION TOAST BANNER --- */}
       {transformToast && (
