@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
-import { FlightWorld3D } from "./FlightWorld3D";
+import { Play, Swords, X } from "lucide-react";
+import { FlightWorld3D, IslandNPC } from "./FlightWorld3D";
+import { BattleArena } from "./BattleArena";
 import {
   INITIAL_CHARACTER_STATE,
   HABIT_ISLANDS,
@@ -31,7 +32,17 @@ const realLifeQuests: Record<string, string> = {
   creation: "Practice a creative skill for 30 minutes and make one small thing.",
 };
 
+const npcChallenges: Record<string, string> = {
+  nexus: "Choose one priority for tomorrow and write it down before you go to sleep.",
+  spirituality: "Spend 10 quiet minutes today in meditation, prayer, breathwork, or gratitude.",
+  reflection: "Write down one thing that helped you today and one thing you can release.",
+  vitality: "Complete a deliberate movement session or take a purposeful 20-minute walk.",
+  wisdom: "Read or study for 30 focused minutes with your phone out of reach.",
+  creation: "Spend 30 minutes practicing a creative skill and make one small thing.",
+};
+
 export function AscensionGame() {
+  const [hasStarted, setHasStarted] = useState(false);
   const [character, setCharacter] = useState<CharacterState>(() => ({
     ...INITIAL_CHARACTER_STATE,
     equipment: { ...INITIAL_CHARACTER_STATE.equipment },
@@ -43,8 +54,38 @@ export function AscensionGame() {
     area: WorldArea;
     island: HabitIsland;
   } | null>(null);
+  const [npcChallenge, setNpcChallenge] = useState<{
+    npc: IslandNPC;
+    text: string;
+  } | null>(null);
+  const [isArenaOpen, setIsArenaOpen] = useState(false);
 
   const islands = useMemo(() => HABIT_ISLANDS, []);
+
+  if (!hasStarted) {
+    return (
+      <div className="relative isolate flex min-h-[620px] items-center justify-center overflow-hidden rounded-2xl border border-slate-700 bg-[radial-gradient(circle_at_top,#173554,#07111d_65%)] p-6 text-slate-100 shadow-2xl">
+        <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(125,211,252,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(125,211,252,0.08)_1px,transparent_1px)] [background-size:48px_48px]" />
+        <div className="relative z-10 mx-auto max-w-2xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">Ascension Archipelago</p>
+          <h2 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">A quiet journey back to yourself</h2>
+          <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-slate-300">
+            Explore a floating world built around six everyday virtues. Visit a sanctuary, listen to its reflection,
+            and turn one small idea into a real-life action. There is no timer, enemy, or score to chase.
+          </p>
+          <button
+            type="button"
+            onClick={() => setHasStarted(true)}
+            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-sky-400 px-6 py-3 font-semibold text-slate-950 transition hover:bg-sky-300"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Play Ascension
+          </button>
+          <p className="mt-4 text-xs text-slate-500">Use WASD or arrow keys to move once the world opens.</p>
+        </div>
+      </div>
+    );
+  }
 
   const awardXp = (amount: number) => {
     setCharacter((current) => ({
@@ -66,6 +107,19 @@ export function AscensionGame() {
     setSelectedArea(null);
   };
 
+  const completeNpcChallenge = () => {
+    if (!npcChallenge) return;
+    setQuests((current) =>
+      current.map((quest) =>
+        quest.questId === npcChallenge.npc.islandId
+          ? { ...quest, completed: true, currentStreak: quest.currentStreak + 1 }
+          : quest,
+      ),
+    );
+    awardXp(25);
+    setNpcChallenge(null);
+  };
+
   return (
     <div className="relative isolate h-[min(78vh,900px)] min-h-[620px] overflow-hidden rounded-2xl border border-slate-700 bg-[#07111d] shadow-2xl">
       <FlightWorld3D
@@ -75,7 +129,22 @@ export function AscensionGame() {
         onTimeOfDayChange={setTimeOfDay}
         onEnterArea={(area, island) => setSelectedArea({ area, island })}
         onAwardXP={awardXp}
+        onDialogueComplete={(npc) =>
+          setNpcChallenge({
+            npc,
+            text: npcChallenges[npc.islandId] ?? "Choose one small action today and follow it through with care.",
+          })
+        }
       />
+
+      <button
+        type="button"
+        onClick={() => setIsArenaOpen(true)}
+        className="absolute right-3 top-3 z-40 inline-flex items-center gap-2 rounded-xl border border-rose-400/40 bg-slate-950/85 px-3 py-2 text-xs font-semibold text-rose-200 shadow-lg backdrop-blur transition hover:border-rose-300 hover:bg-rose-950/80"
+      >
+        <Swords className="h-4 w-4" />
+        Battle Arena
+      </button>
 
       {selectedArea && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
@@ -119,6 +188,39 @@ export function AscensionGame() {
             </button>
           </div>
         </div>
+      )}
+
+      {npcChallenge && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-amber-300/40 bg-slate-950/95 p-6 text-slate-100 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-300">
+              Challenge from {npcChallenge.npc.name}
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold">Carry this idea into your day</h3>
+            <p className="mt-4 text-sm leading-6 text-slate-300">
+              {npcChallenge.text}
+            </p>
+            <p className="mt-4 text-xs leading-5 text-slate-500">
+              Complete the real-life challenge, then return and confirm it here to add one day to your streak.
+            </p>
+            <button
+              type="button"
+              className="mt-6 w-full rounded-lg bg-amber-300 px-4 py-3 font-semibold text-slate-950 transition hover:bg-amber-200"
+              onClick={completeNpcChallenge}
+            >
+              I completed this challenge (+1 day, +25 XP)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isArenaOpen && (
+        <BattleArena
+          character={character}
+          quests={quests}
+          onAwardXP={awardXp}
+          onClose={() => setIsArenaOpen(false)}
+        />
       )}
 
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-slate-950/70 px-3 py-2 text-xs text-slate-300 backdrop-blur">

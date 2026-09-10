@@ -6,7 +6,7 @@ let setupError = "";
 let cameraReady = false;
 let cameraStarted = false;
 let cameraStream;
-let hero = new URLSearchParams(window.location.search).get("hero") === "superman" ? "superman" : "spiderman";
+let hero = new URLSearchParams(window.location.search).get("hero") === "wolverine" ? "wolverine" : "spiderman";
 
 // Web mechanics
 let isShooting = false;
@@ -81,18 +81,13 @@ async function startCamera() {
             setupError = "Camera could not be started. Check your browser permissions.";
         });
 
-        if (hero === "superman") {
-            // Superman uses automatic eye lasers and does not need hand tracking.
+        await loadMl5();
+        handPose = ml5.handPose({ flipped: true }, () => {
             modelLoaded = true;
-        } else {
-            await loadMl5();
-            handPose = ml5.handPose({ flipped: true }, () => {
-                modelLoaded = true;
-                handPose.detectStart(video, (results) => {
-                    hands = results;
-                });
+            handPose.detectStart(video, (results) => {
+                hands = results;
             });
-        }
+        });
     } catch (error) {
         cameraStarted = false;
         cameraStream?.getTracks().forEach((track) => track.stop());
@@ -133,19 +128,9 @@ function draw() {
         return;
     }
 
-    if (hero === "superman") {
-        const eyeY = height * 0.43;
-        const eyeGap = min(width * 0.06, 48);
-        if (frameCount % 10 === 0) {
-            shootLaser({ x: width / 2 - eyeGap, y: eyeY });
-            shootLaser({ x: width / 2 + eyeGap, y: eyeY });
-        }
-        drawAimReticle(width / 2, height / 2);
-    }
-
     let gestureDetected = false;
 
-    if (hero === "spiderman" && hands.length > 0 && hands[0].keypoints) {
+    if (hands.length > 0 && hands[0].keypoints) {
         const pts = hands[0].keypoints;
 
         const wrist = getPt(pts[0]);
@@ -163,30 +148,38 @@ function draw() {
             const rMiddle = dist(wrist.x, wrist.y, middleTip.x, middleTip.y) / handScale;
             const rRing = dist(wrist.x, wrist.y, ringTip.x, ringTip.y) / handScale;
 
-            const extended = rIndex > 1.4 && rPinky > 1.2;
-            const curled = rMiddle < 1.15 && rRing < 1.15;
-
-            gestureDetected = extended && curled;
-
             const palm = {
                 x: (wrist.x + midKnuckle.x) * 0.5,
                 y: (wrist.y + midKnuckle.y) * 0.5,
             };
 
-            if (gestureDetected) {
-                if (!isShooting) {
-                    isShooting = true;
-                    shootWeb(palm);
+            if (hero === "spiderman") {
+                const extended = rIndex > 1.4 && rPinky > 1.2;
+                const curled = rMiddle < 1.15 && rRing < 1.15;
+                gestureDetected = extended && curled;
+
+                if (gestureDetected) {
+                    if (!isShooting) {
+                        isShooting = true;
+                        shootWeb(palm);
+                    }
+                    drawAimReticle(palm.x, palm.y);
+                } else {
+                    isShooting = false;
                 }
-                drawAimReticle(palm.x, palm.y);
-            } else if (hero === "spiderman") {
-                isShooting = false;
+            } else {
+                const fistClosed = [rIndex, rMiddle, rRing, rPinky].every((ratio) => ratio < 1.35);
+                gestureDetected = fistClosed;
+                if (gestureDetected) {
+                    drawClaws(pts);
+                    drawAimReticle(palm.x, palm.y);
+                }
             }
 
             drawKeypoints([wrist, indexTip, middleTip, ringTip, pinkyTip], gestureDetected);
+        } else {
+            isShooting = false;
         }
-    } else if (hero === "spiderman") {
-        isShooting = false;
     }
 
     updateAndRenderSplats();
@@ -233,6 +226,30 @@ function shootLaser(origin) {
     const targetX = width / 2 + random(-15, 15);
     const targetY = height / 2 + random(-15, 15);
     laserBeams.push({ x1: origin.x, y1: origin.y, x2: targetX, y2: targetY, life: 255 });
+}
+
+function drawClaws(points) {
+    const wrist = getPt(points[0]);
+    const knuckles = [5, 9, 13].map((index) => getPt(points[index]));
+
+    push();
+    stroke(255, 245, 210, 230);
+    strokeWeight(7);
+    strokeCap(ROUND);
+    for (const knuckle of knuckles) {
+        const direction = createVector(knuckle.x - wrist.x, knuckle.y - wrist.y).normalize();
+        const tip = {
+            x: knuckle.x + direction.x * 62,
+            y: knuckle.y + direction.y * 62,
+        };
+        line(knuckle.x, knuckle.y, tip.x, tip.y);
+        stroke(140, 150, 165, 240);
+        strokeWeight(3);
+        line(knuckle.x, knuckle.y, tip.x, tip.y);
+        stroke(255, 245, 210, 230);
+        strokeWeight(7);
+    }
+    pop();
 }
 
 function updateAndRenderLasers() {
@@ -403,14 +420,14 @@ function drawHUD(active) {
     fill(255);
     textSize(15);
     textAlign(LEFT, TOP);
-    text(hero === "superman" ? "Superman Laser Vision" : "Spider-Man Web Shooter", 35, 30);
+    text(hero === "wolverine" ? "Wolverine Claws" : "Spider-Man Web Shooter", 35, 30);
 
     textSize(12);
     fill(active ? color(0, 230, 255) : color(180));
-    text(`Status: ${active ? (hero === "superman" ? "HEAT VISION!" : "THWIP! (SCREEN HIT)") : "AIMING CENTER"}`, 35, 54);
+    text(`Status: ${active ? (hero === "wolverine" ? "CLAWS OUT!" : "THWIP! (SCREEN HIT)") : "AIMING CENTER"}`, 35, 54);
 
     fill(140);
-    text(hero === "superman" ? "Extend Index + Pinky to fire eye lasers" : "Extend Index + Pinky to shoot webs", 35, 74);
+    text(hero === "wolverine" ? "Clench your fist to extend the claws" : "Extend Index + Pinky to shoot webs", 35, 74);
 }
 
 function drawStatus(mainText, subText) {

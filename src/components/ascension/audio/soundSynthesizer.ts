@@ -6,6 +6,10 @@ class SoundSynthesizer {
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private ambientGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private musicTimer: number | null = null;
+  private musicPad: OscillatorNode[] = [];
+  private musicStep = 0;
   private isInitialized: boolean = false;
 
   public init() {
@@ -19,6 +23,10 @@ class SoundSynthesizer {
       this.ambientGain = this.ctx.createGain();
       this.ambientGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
       this.ambientGain.connect(this.ctx.destination);
+
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+      this.musicGain.connect(this.ctx.destination);
 
       // Create procedural pink noise buffer for wind
       const bufferSize = this.ctx.sampleRate * 2;
@@ -57,6 +65,68 @@ class SoundSynthesizer {
       this.isInitialized = true;
     } catch (e) {
       console.warn('Web Audio could not initialize automatically', e);
+    }
+  }
+
+  public startMusic() {
+    if (!this.ctx || !this.musicGain || this.musicTimer !== null) return;
+
+    this.musicStep = 0;
+    const padFrequencies = [196, 246.94, 293.66];
+    this.musicPad = padFrequencies.map((frequency) => {
+      const oscillator = this.ctx!.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, this.ctx!.currentTime);
+      oscillator.connect(this.musicGain!);
+      oscillator.start();
+      return oscillator;
+    });
+
+    this.playMusicNote();
+    this.musicTimer = window.setInterval(() => this.playMusicNote(), 4000);
+  }
+
+  public stopMusic() {
+    if (this.musicTimer !== null) {
+      window.clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+
+    this.musicPad.forEach((oscillator) => {
+      try {
+        oscillator.stop();
+      } catch {
+        // The oscillator may already be stopped during unmount.
+      }
+    });
+    this.musicPad = [];
+  }
+
+  private playMusicNote() {
+    if (!this.ctx || !this.musicGain || this.isMuted) return;
+
+    const notes = [392, 493.88, 587.33, 493.88, 440, 523.25, 659.25, 523.25];
+    const frequency = notes[this.musicStep % notes.length];
+    this.musicStep += 1;
+
+    try {
+      if (this.ctx.state === 'suspended') {
+        void this.ctx.resume();
+      }
+      const now = this.ctx.currentTime;
+      const oscillator = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.07, now + 0.35);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 3.6);
+      oscillator.connect(gain);
+      gain.connect(this.musicGain);
+      oscillator.start(now);
+      oscillator.stop(now + 3.8);
+    } catch {
+      // Ignore transient Web Audio scheduling errors.
     }
   }
 
@@ -229,6 +299,9 @@ class SoundSynthesizer {
     this.isMuted = !this.isMuted;
     if (this.windGain && this.ctx) {
       this.windGain.gain.setValueAtTime(this.isMuted ? 0 : 0.05, this.ctx.currentTime);
+    }
+    if (this.musicGain && this.ctx) {
+      this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : 0.12, this.ctx.currentTime);
     }
     return this.isMuted;
   }

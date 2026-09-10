@@ -40,6 +40,7 @@ interface FlightWorld3DProps {
   onTimeOfDayChange: (time: TimeOfDay) => void;
   onEnterArea: (area: WorldArea, island: HabitIsland) => void;
   onAwardXP?: (amount: number) => void;
+  onDialogueComplete?: (npc: IslandNPC) => void;
   onOpenGuideTab?: () => void;
   onOpenArmoryModal?: () => void;
   onAscendGear?: (slot: GearSlot) => void;
@@ -403,6 +404,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   onTimeOfDayChange,
   onEnterArea,
   onAwardXP,
+  onDialogueComplete,
   onOpenGuideTab,
   onOpenArmoryModal,
   onAscendGear,
@@ -428,8 +430,8 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [cameraMode, setCameraMode] = useState<'chase' | 'cinematic' | 'firstPerson'>('chase');
   const [flightState, setFlightState] = useState<'SOARING' | 'GLIDING' | 'DIVING' | 'BOOSTING' | 'PERCHED'>('PERCHED');
-  const [isDofEnabled, setIsDofEnabled] = useState(true);
-  const [bloomEnabled, setBloomEnabled] = useState(true);
+  const [isDofEnabled, setIsDofEnabled] = useState(false);
+  const [bloomEnabled, setBloomEnabled] = useState(false);
   const [invertPitch, setInvertPitch] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -461,6 +463,12 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   const [dialogueLineIndex, setDialogueLineIndex] = useState(0);
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+
+  useEffect(() => {
+    soundSynth.init();
+    soundSynth.startMusic();
+    return () => soundSynth.stopMusic();
+  }, []);
 
   // Interaction Refs for loop access
   const nearSanctuaryRef = useRef<WorldArea | null>(null);
@@ -589,10 +597,11 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       startTypewriter(npc.dialogueLines[nextIdx]);
     } else {
       // Completed all lines
+      onDialogueComplete?.(npc);
       handleCloseDialogue();
       soundSynth.playItemObtain();
     }
-  }, [startTypewriter, handleCloseDialogue]);
+  }, [startTypewriter, handleCloseDialogue, onDialogueComplete]);
 
   const handleAdvanceDialogueRef = useRef(handleAdvanceDialogue);
   handleAdvanceDialogueRef.current = handleAdvanceDialogue;
@@ -639,6 +648,17 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     camYaw: 0,
     camPitch: 0.18,
   });
+  const cameraInputAtRef = useRef(0);
+
+  const setMobileKey = useCallback((key: 'KeyW' | 'KeyS' | 'KeyA' | 'KeyD' | 'Space' | 'KeyF', pressed: boolean) => {
+    physicsRef.current.keys[key] = pressed;
+    cameraInputAtRef.current = performance.now();
+  }, []);
+
+  const pressMobileKey = useCallback((key: 'Space' | 'KeyF') => {
+    setMobileKey(key, true);
+    window.setTimeout(() => setMobileKey(key, false), 120);
+  }, [setMobileKey]);
 
   // Handle Land & Enter Area
   const handleEnterNearestSanctuary = useCallback(() => {
@@ -826,8 +846,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
-
-    soundSynth.init();
 
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
@@ -2162,6 +2180,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     // Mouse drag for 360 camera orbit (smooth, normal orbit)
     const handleMouseDown = (e: MouseEvent) => {
       physicsRef.current.mouseDrag = true;
+      cameraInputAtRef.current = performance.now();
       physicsRef.current.prevMouse = { x: e.clientX, y: e.clientY };
     };
 
@@ -2170,6 +2189,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       const dx = e.clientX - physicsRef.current.prevMouse.x;
       const dy = e.clientY - physicsRef.current.prevMouse.y;
       physicsRef.current.prevMouse = { x: e.clientX, y: e.clientY };
+      cameraInputAtRef.current = performance.now();
 
       const sens = 0.0035;
       if (physicsRef.current.isGrounded) {
@@ -2195,7 +2215,9 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         physicsRef.current.mouseDrag = true;
+        cameraInputAtRef.current = performance.now();
         physicsRef.current.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        cameraInputAtRef.current = performance.now();
       }
     };
 
@@ -2700,6 +2722,14 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       setNearSanctuary(activeSanctuary);
       setNearSanctuaryIsland(activeSanctuary ? activeIsland : null);
 
+      // Return the view to the direction of travel after the player stops looking around.
+      if (!p.mouseDrag && performance.now() - cameraInputAtRef.current > 1800) {
+        p.camYaw = THREE.MathUtils.lerp(p.camYaw, p.yaw, 1 - Math.exp(-2.8 * delta));
+        p.camPitch = THREE.MathUtils.lerp(p.camPitch, 0.18, 1 - Math.exp(-2.8 * delta));
+        p.orbitOffset.x = THREE.MathUtils.lerp(p.orbitOffset.x, 0, 1 - Math.exp(-2.8 * delta));
+        p.orbitOffset.y = THREE.MathUtils.lerp(p.orbitOffset.y, 0, 1 - Math.exp(-2.8 * delta));
+      }
+
       // --- SMOOTH THIRD-PERSON CAMERA WITH GROUND VS FLIGHT PROFILES ---
       if (p.isGrounded) {
         // Ground 3rd-person camera: positions cleanly behind player relative to camYaw & camPitch
@@ -2880,6 +2910,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   return (
     <div
       ref={containerRef}
+      style={{ touchAction: 'none' }}
       className={`relative w-full overflow-hidden rounded-2xl border border-[#262e36] bg-[#090d12] select-none shadow-[0_8px_32px_rgba(0,0,0,0.5)] ${
         isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'h-[640px] sm:h-[720px]'
       }`}
@@ -3127,6 +3158,63 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       )}
 
       {/* --- HUD BOTTOM FLIGHT & GROUND INSTRUMENTS --- */}
+      <div className="pointer-events-auto absolute bottom-28 left-4 z-20 flex flex-col items-center gap-1 md:hidden">
+        <button
+          type="button"
+          aria-label="Move forward"
+          className="h-12 w-12 rounded-xl border border-white/20 bg-slate-950/85 text-lg font-bold text-white shadow-lg backdrop-blur touch-none"
+          onPointerDown={() => setMobileKey('KeyW', true)}
+          onPointerUp={() => setMobileKey('KeyW', false)}
+          onPointerCancel={() => setMobileKey('KeyW', false)}
+          onPointerLeave={() => setMobileKey('KeyW', false)}
+        >
+          ▲
+        </button>
+        <div className="flex gap-1">
+          {([
+            ['KeyA', '◀', 'Move left'],
+            ['KeyS', '▼', 'Move backward'],
+            ['KeyD', '▶', 'Move right'],
+          ] as const).map(([key, label, ariaLabel]) => (
+            <button
+              key={key}
+              type="button"
+              aria-label={ariaLabel}
+              className="h-12 w-12 rounded-xl border border-white/20 bg-slate-950/85 text-lg font-bold text-white shadow-lg backdrop-blur touch-none"
+              onPointerDown={() => setMobileKey(key, true)}
+              onPointerUp={() => setMobileKey(key, false)}
+              onPointerCancel={() => setMobileKey(key, false)}
+              onPointerLeave={() => setMobileKey(key, false)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1">
+          <button
+            type="button"
+            aria-label={isGroundedUI ? 'Take flight' : 'Land'}
+            className="rounded-xl border border-sky-300/30 bg-sky-950/85 px-3 py-2 text-xs font-semibold text-sky-100 shadow-lg backdrop-blur"
+            onClick={() => pressMobileKey(isGroundedUI ? 'Space' : 'KeyF')}
+          >
+            {isGroundedUI ? 'Fly' : 'Land'}
+          </button>
+          <button
+            type="button"
+            aria-label="Center camera"
+            className="rounded-xl border border-amber-300/30 bg-amber-950/85 px-3 py-2 text-xs font-semibold text-amber-100 shadow-lg backdrop-blur"
+            onClick={() => {
+              physicsRef.current.camYaw = physicsRef.current.yaw;
+              physicsRef.current.camPitch = 0.18;
+              physicsRef.current.orbitOffset.set(0, 0);
+              cameraInputAtRef.current = performance.now();
+            }}
+          >
+            Center
+          </button>
+        </div>
+      </div>
+
       <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between pointer-events-none z-10">
         {/* Left: Exploration / Flight Profile */}
         <div className="pointer-events-auto flex items-center gap-3">
