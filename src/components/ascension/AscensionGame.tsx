@@ -210,6 +210,13 @@ export function AscensionGame() {
             >
               I completed this challenge (+1 day, +25 XP)
             </button>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+              onClick={() => setNpcChallenge(null)}
+            >
+              Not now
+            </button>
           </div>
         </div>
       )}

@@ -8,8 +8,6 @@ class SoundSynthesizer {
   private ambientGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private musicTimer: number | null = null;
-  private musicPad: OscillatorNode[] = [];
-  private musicStep = 0;
   private isInitialized: boolean = false;
 
   public init() {
@@ -71,19 +69,10 @@ class SoundSynthesizer {
   public startMusic() {
     if (!this.ctx || !this.musicGain || this.musicTimer !== null) return;
 
-    this.musicStep = 0;
-    const padFrequencies = [196, 246.94, 293.66];
-    this.musicPad = padFrequencies.map((frequency) => {
-      const oscillator = this.ctx!.createOscillator();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(frequency, this.ctx!.currentTime);
-      oscillator.connect(this.musicGain!);
-      oscillator.start();
-      return oscillator;
-    });
-
-    this.playMusicNote();
-    this.musicTimer = window.setInterval(() => this.playMusicNote(), 4000);
+    this.musicTimer = window.setInterval(() => {
+      if (Math.random() > 0.2) this.playBirdCall();
+    }, 5200);
+    this.playBirdCall();
   }
 
   public stopMusic() {
@@ -92,22 +81,10 @@ class SoundSynthesizer {
       this.musicTimer = null;
     }
 
-    this.musicPad.forEach((oscillator) => {
-      try {
-        oscillator.stop();
-      } catch {
-        // The oscillator may already be stopped during unmount.
-      }
-    });
-    this.musicPad = [];
   }
 
-  private playMusicNote() {
+  private playBirdCall() {
     if (!this.ctx || !this.musicGain || this.isMuted) return;
-
-    const notes = [392, 493.88, 587.33, 493.88, 440, 523.25, 659.25, 523.25];
-    const frequency = notes[this.musicStep % notes.length];
-    this.musicStep += 1;
 
     try {
       if (this.ctx.state === 'suspended') {
@@ -116,15 +93,18 @@ class SoundSynthesizer {
       const now = this.ctx.currentTime;
       const oscillator = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      oscillator.type = 'triangle';
-      oscillator.frequency.setValueAtTime(frequency, now);
+      const startFrequency = 1500 + Math.random() * 500;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(startFrequency, now);
+      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * 1.45, now + 0.12);
+      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * 1.08, now + 0.28);
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.07, now + 0.35);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 3.6);
+      gain.gain.exponentialRampToValueAtTime(0.035, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
       oscillator.connect(gain);
       gain.connect(this.musicGain);
       oscillator.start(now);
-      oscillator.stop(now + 3.8);
+      oscillator.stop(now + 0.35);
     } catch {
       // Ignore transient Web Audio scheduling errors.
     }

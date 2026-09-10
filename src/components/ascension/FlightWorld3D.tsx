@@ -393,6 +393,7 @@ function createNPCEntity(npc: IslandNPC): {
   // Overhead Canvas Billboard Sprite
   const nametagSprite = createNPCLabelSprite(npc.name, npc.title, npc.accentHex);
   npcGroup.add(nametagSprite);
+  npcGroup.scale.setScalar(1.45);
 
   return { group: npcGroup, beaconRune, relicMesh, halo };
 }
@@ -659,6 +660,27 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     setMobileKey(key, true);
     window.setTimeout(() => setMobileKey(key, false), 120);
   }, [setMobileKey]);
+
+  const updateMobileJoystick = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - (rect.left + rect.width / 2);
+    const y = event.clientY - (rect.top + rect.height / 2);
+    const horizontal = Math.abs(x) > Math.abs(y) * 0.7;
+    const keys = physicsRef.current.keys;
+    keys.KeyW = !horizontal && y < -10;
+    keys.KeyS = !horizontal && y > 10;
+    keys.KeyA = horizontal && x < -10;
+    keys.KeyD = horizontal && x > 10;
+    cameraInputAtRef.current = performance.now();
+  }, []);
+
+  const releaseMobileJoystick = useCallback(() => {
+    const keys = physicsRef.current.keys;
+    keys.KeyW = false;
+    keys.KeyS = false;
+    keys.KeyA = false;
+    keys.KeyD = false;
+  }, []);
 
   // Handle Land & Enter Area
   const handleEnterNearestSanctuary = useCallback(() => {
@@ -3159,36 +3181,22 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
       {/* --- HUD BOTTOM FLIGHT & GROUND INSTRUMENTS --- */}
       <div className="pointer-events-auto absolute bottom-28 left-4 z-20 flex flex-col items-center gap-1 md:hidden">
-        <button
-          type="button"
-          aria-label="Move forward"
-          className="h-12 w-12 rounded-xl border border-white/20 bg-slate-950/85 text-lg font-bold text-white shadow-lg backdrop-blur touch-none"
-          onPointerDown={() => setMobileKey('KeyW', true)}
-          onPointerUp={() => setMobileKey('KeyW', false)}
-          onPointerCancel={() => setMobileKey('KeyW', false)}
-          onPointerLeave={() => setMobileKey('KeyW', false)}
+        <div
+          role="application"
+          aria-label="Movement joystick"
+          className="relative h-28 w-28 touch-none rounded-full border border-white/25 bg-slate-950/85 shadow-lg backdrop-blur"
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            updateMobileJoystick(event);
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) updateMobileJoystick(event);
+          }}
+          onPointerUp={releaseMobileJoystick}
+          onPointerCancel={releaseMobileJoystick}
         >
-          ▲
-        </button>
-        <div className="flex gap-1">
-          {([
-            ['KeyA', '◀', 'Move left'],
-            ['KeyS', '▼', 'Move backward'],
-            ['KeyD', '▶', 'Move right'],
-          ] as const).map(([key, label, ariaLabel]) => (
-            <button
-              key={key}
-              type="button"
-              aria-label={ariaLabel}
-              className="h-12 w-12 rounded-xl border border-white/20 bg-slate-950/85 text-lg font-bold text-white shadow-lg backdrop-blur touch-none"
-              onPointerDown={() => setMobileKey(key, true)}
-              onPointerUp={() => setMobileKey(key, false)}
-              onPointerCancel={() => setMobileKey(key, false)}
-              onPointerLeave={() => setMobileKey(key, false)}
-            >
-              {label}
-            </button>
-          ))}
+          <span className="absolute inset-8 rounded-full border border-white/20 bg-white/10" />
+          <span className="absolute left-1/2 top-2 -translate-x-1/2 text-xs text-white/70">Move</span>
         </div>
         <div className="mt-2 flex gap-1">
           <button
