@@ -2215,13 +2215,13 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
       const sens = 0.0035;
       if (physicsRef.current.isGrounded) {
-        physicsRef.current.camYaw += dx * sens;
+        physicsRef.current.camYaw -= dx * sens;
         physicsRef.current.camPitch = Math.max(
           -0.25,
           Math.min(0.7, physicsRef.current.camPitch + dy * sens)
         );
       } else {
-        physicsRef.current.orbitOffset.x += dx * sens;
+        physicsRef.current.orbitOffset.x -= dx * sens;
         physicsRef.current.orbitOffset.y = Math.max(
           -0.65,
           Math.min(0.65, physicsRef.current.orbitOffset.y + dy * sens)
@@ -2251,13 +2251,13 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
 
       const sens = 0.004;
       if (physicsRef.current.isGrounded) {
-        physicsRef.current.camYaw += dx * sens;
+        physicsRef.current.camYaw -= dx * sens;
         physicsRef.current.camPitch = Math.max(
           -0.25,
           Math.min(0.7, physicsRef.current.camPitch + dy * sens)
         );
       } else {
-        physicsRef.current.orbitOffset.x += dx * sens;
+        physicsRef.current.orbitOffset.x -= dx * sens;
         physicsRef.current.orbitOffset.y = Math.max(
           -0.65,
           Math.min(0.65, physicsRef.current.orbitOffset.y + dy * sens)
@@ -2744,8 +2744,13 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       setNearSanctuary(activeSanctuary);
       setNearSanctuaryIsland(activeSanctuary ? activeIsland : null);
 
-      // Return the view to the direction of travel after the player stops looking around.
-      if (!p.mouseDrag && performance.now() - cameraInputAtRef.current > 1800) {
+      const isWalking = p.isGrounded && (
+        keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD
+      );
+
+      // Return the view to the direction of travel only when the player is
+      // stationary; movement should never make the camera spin underneath them.
+      if (!isWalking && !p.mouseDrag && performance.now() - cameraInputAtRef.current > 1800) {
         p.camYaw = THREE.MathUtils.lerp(p.camYaw, p.yaw, 1 - Math.exp(-2.8 * delta));
         p.camPitch = THREE.MathUtils.lerp(p.camPitch, 0.18, 1 - Math.exp(-2.8 * delta));
         p.orbitOffset.x = THREE.MathUtils.lerp(p.orbitOffset.x, 0, 1 - Math.exp(-2.8 * delta));
