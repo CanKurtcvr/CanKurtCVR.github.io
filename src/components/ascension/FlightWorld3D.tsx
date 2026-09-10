@@ -431,7 +431,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
   const [currentIsland, setCurrentIsland] = useState<HabitIsland | null>(null);
   const [nearSanctuary, setNearSanctuary] = useState<WorldArea | null>(null);
   const [nearSanctuaryIsland, setNearSanctuaryIsland] = useState<HabitIsland | null>(null);
-  const [collectedEssence, setCollectedEssence] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraMode, setCameraMode] = useState<'chase' | 'cinematic' | 'firstPerson'>('chase');
   const [flightState, setFlightState] = useState<'SOARING' | 'GLIDING' | 'DIVING' | 'BOOSTING' | 'PERCHED'>('PERCHED');
@@ -1447,27 +1446,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       });
     });
 
-    // 6. Floating Starlight Essence Rings in Sky
-    const essenceRings: { mesh: THREE.Mesh; pos: THREE.Vector3; collected: boolean }[] = [];
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xfde047,
-      side: THREE.DoubleSide,
-    });
-    for (let r = 0; r < 20; r++) {
-      const angle = (r / 20) * Math.PI * 2;
-      const radius = 180 + (r % 3) * 110;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
-      const y = 60 + Math.sin(r * 2) * 35;
-
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(8, 0.9, 12, 32), ringMat.clone());
-      ring.position.set(x, y, z);
-      ring.lookAt(0, y, 0);
-      scene.add(ring);
-      essenceRings.push({ mesh: ring, pos: ring.position, collected: false });
-    }
-
-    // 7. BUILD THE MAJESTIC SPIRITUAL WHITE BIRD
+    // 6. BUILD THE MAJESTIC SPIRITUAL WHITE BIRD
     const birdRoot = new THREE.Group();
     const birdBody = new THREE.Group();
     birdBody.visible = false; // Initially grounded with Wayfarer character
@@ -1483,6 +1462,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     const petBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xc084fc, roughness: 0.8 });
     const petDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75 });
     const petShellMaterial = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.9 });
+    const petEyeMaterial = new THREE.MeshBasicMaterial({ color: 0x111827 });
     const addPetBody = (group: THREE.Group, body: THREE.Mesh, ears: THREE.Mesh[] = []) => {
       body.position.y = 0.45;
       body.castShadow = true;
@@ -1502,16 +1482,25 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
     );
     petGroups.cat.children[1].position.set(-0.2, 0.85, 0);
     petGroups.cat.children[2].position.set(0.2, 0.85, 0);
+    [-0.14, 0.14].forEach((x) => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), petEyeMaterial);
+      eye.position.set(x, 0.53, 0.38);
+      petGroups.cat.add(eye);
+    });
     addPetBody(
       petGroups.dog,
       new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 10), petDarkMaterial),
       [new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), petDarkMaterial)],
     );
     petGroups.dog.children[1].position.set(0, 0.82, 0.28);
+    const dogNose = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), petEyeMaterial);
+    dogNose.position.set(0, 0.48, 0.48);
+    petGroups.dog.add(dogNose);
     addPetBody(petGroups.turtle, new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), petShellMaterial));
     petGroups.turtle.children[0].scale.set(1.15, 0.55, 1.25);
     Object.values(petGroups).forEach((group) => {
       group.visible = false;
+      group.scale.setScalar(1.35);
       petRoot.add(group);
     });
     scene.add(petRoot);
@@ -2544,7 +2533,7 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
         const followDistance = 2.6;
         petRoot.position.set(
           p.pos.x - Math.sin(p.yaw) * followDistance,
-          p.pos.y - 1.45 + Math.sin(elapsed * 4) * 0.03,
+          p.pos.y - 1.8 + Math.sin(elapsed * 4) * 0.03,
           p.pos.z - Math.cos(p.yaw) * followDistance,
         );
         petRoot.rotation.y = p.yaw;
@@ -2728,19 +2717,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
       islandBeaconRays.forEach((ray, i) => {
         (ray.material as THREE.MeshBasicMaterial).opacity =
           0.25 + Math.sin(elapsed * 2 + i) * 0.15;
-      });
-
-      // Essence Rings Collection Check
-      essenceRings.forEach((ring) => {
-        if (!ring.collected && ring.pos.distanceTo(p.pos) < 14) {
-          ring.collected = true;
-          ring.mesh.visible = false;
-          soundSynth.playChime(784);
-          soundSynth.playSpeedBoost();
-          p.speed = Math.min(p.maxSpeed, p.speed + 12);
-          setCollectedEssence((prev) => prev + 1);
-          if (onAwardXP) onAwardXP(25);
-        }
       });
 
       // Island Landing & Sanctuary Proximity Check
@@ -3021,11 +2997,6 @@ export const FlightWorld3D: React.FC<FlightWorld3DProps> = ({
             </div>
           </div>
 
-          {/* Starlight Essence Collected */}
-          <div className="hidden">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{collectedEssence} Essences</span>
-          </div>
         </div>
 
         {/* Right: Quick Controls & Camera Modes */}

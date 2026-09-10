@@ -19,7 +19,7 @@ class SoundSynthesizer {
 
       // Master ambient gain
       this.ambientGain = this.ctx.createGain();
-      this.ambientGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+      this.ambientGain.gain.setValueAtTime(0.28, this.ctx.currentTime);
       this.ambientGain.connect(this.ctx.destination);
 
       this.musicGain = this.ctx.createGain();
@@ -70,8 +70,8 @@ class SoundSynthesizer {
     if (!this.ctx || !this.musicGain || this.musicTimer !== null) return;
 
     this.musicTimer = window.setInterval(() => {
-      if (Math.random() > 0.12) this.playAmbientCall();
-    }, 3900);
+      this.playAmbientCall();
+    }, 2800);
     this.playAmbientCall();
   }
 
@@ -93,19 +93,42 @@ class SoundSynthesizer {
       const now = this.ctx.currentTime;
       const oscillator = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      const startFrequency = 1100 + Math.random() * 1200;
-      const callType = Math.floor(Math.random() * 3);
-      oscillator.type = callType === 2 ? 'triangle' : 'sine';
+      const callType = Math.floor(Math.random() * 6);
+      const startFrequency = [780, 980, 1250, 1480, 1720, 2100][callType] * (0.86 + Math.random() * 0.3);
+      const duration = 0.22 + Math.random() * 0.62;
+      const endRatio = [1.45, 0.72, 1.18, 0.58, 1.65, 0.92][callType] * (0.9 + Math.random() * 0.2);
+      const peakGain = 0.014 + Math.random() * 0.026;
+      oscillator.type = (['sine', 'triangle', 'sine', 'triangle', 'sine', 'square'] as OscillatorType[])[callType];
       oscillator.frequency.setValueAtTime(startFrequency, now);
-      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * (callType === 0 ? 1.55 : 0.82), now + 0.12);
-      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * (callType === 1 ? 1.3 : 1.08), now + 0.28);
+      oscillator.frequency.exponentialRampToValueAtTime(startFrequency * endRatio, now + duration * 0.42);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        startFrequency * (0.78 + Math.random() * 0.55),
+        now + duration,
+      );
+      oscillator.detune.setValueAtTime(-18 + Math.random() * 36, now);
+      oscillator.detune.linearRampToValueAtTime(-12 + Math.random() * 24, now + duration);
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.025 + Math.random() * 0.02, now + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + (callType === 2 ? 0.5 : 0.32));
+      gain.gain.exponentialRampToValueAtTime(peakGain, now + 0.025 + Math.random() * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
       oscillator.connect(gain);
       gain.connect(this.musicGain);
       oscillator.start(now);
-      oscillator.stop(now + (callType === 2 ? 0.55 : 0.35));
+      oscillator.stop(now + duration + 0.03);
+
+      if (callType === 2 || callType === 4) {
+        const overtone = this.ctx.createOscillator();
+        const overtoneGain = this.ctx.createGain();
+        overtone.type = 'sine';
+        overtone.frequency.setValueAtTime(startFrequency * (1.48 + Math.random() * 0.3), now);
+        overtone.frequency.exponentialRampToValueAtTime(startFrequency * 1.08, now + duration);
+        overtoneGain.gain.setValueAtTime(0.001, now);
+        overtoneGain.gain.exponentialRampToValueAtTime(peakGain * 0.28, now + 0.04);
+        overtoneGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        overtone.connect(overtoneGain);
+        overtoneGain.connect(this.musicGain);
+        overtone.start(now);
+        overtone.stop(now + duration + 0.03);
+      }
     } catch {
       // Ignore transient Web Audio scheduling errors.
     }
